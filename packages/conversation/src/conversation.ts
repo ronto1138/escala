@@ -1,5 +1,5 @@
 import type { ChannelPort, InboundMessage, OutboundMessage, ParticipantId } from "@escala/channel";
-import { DELETE_WORDS, detectLang, MENU_WORDS, PRIVACY_WORDS, STOP_WORDS, T, type Lang } from "./i18n.ts";
+import { DELETE_ALL_PHRASES, DELETE_WORDS, detectLang, MENU_WORDS, PRIVACY_WORDS, STOP_WORDS, T, type Lang } from "./i18n.ts";
 
 export type Stage = "new" | "onboarding" | "ready" | "stopped";
 export type ShareLevel = "trip" | "profile";
@@ -73,7 +73,10 @@ export class Conversation {
     let p = this.people.get(m.from);
     const tokens = new Set(word.split(/[^\p{L}'-]+/u).filter(Boolean));
 
-    if (DELETE_WORDS.some((w) => (w.includes(" ") ? word.includes(w) : tokens.has(w)))) {
+    const deleteAll =
+      DELETE_ALL_PHRASES.some((w) => word.includes(w)) ||
+      (words(text).length <= 3 && DELETE_WORDS.some((w) => (w.includes(" ") ? word.includes(w) : tokens.has(w))));
+    if (deleteAll) {
       const lang = p?.lang ?? detectLang(text);
       this.people.delete(m.from);
       await this.deps.onDelete?.(m.from);

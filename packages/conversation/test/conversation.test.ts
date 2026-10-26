@@ -150,6 +150,24 @@ describe("Muse Code audit (Oct 26): privacy promises are kept", () => {
     expect(last.text).toMatch(/Borré todo/);
   });
 
+  it("battery (Oct 26): 'delete' inside a sentence does not erase everything; 'delete everything' does", async () => {
+    const sim = new SimChannel();
+    const erased: string[] = [];
+    const conv = new Conversation({ channel: sim, extractItinerary: async () => null, agent: async () => [], onDelete: async (id) => void erased.push(id) });
+    await sim.userSends("9", { kind: "text", text: "Hi" });
+    await sim.userSends("9", { kind: "text", text: "Please delete the note about my bag." });
+    expect(erased).toEqual([]);
+    await sim.userSends("9", { kind: "text", text: "Actually, please delete everything you have on me" });
+    expect(erased).toEqual(["9"]);
+  });
+
+  it("battery (Oct 26): English with 'me' is not read as Spanish", () => {
+    expect(detectLang("ZX denied me boarding in Calgary. What do they owe me and when?")).toBe("en");
+    expect(detectLang("Can you help me with my trip?")).toBe("en");
+    expect(detectLang("¿Me ayudas con mi viaje?")).toBe("es");
+    expect(detectLang("Pouvez-vous m'aider pour mon voyage ?")).toBe("fr");
+  });
+
   it("P2: 'please stop' and 'stop,' stop the messages", async () => {
     for (const text of ["please stop", "stop,"]) {
       const sim = new SimChannel();

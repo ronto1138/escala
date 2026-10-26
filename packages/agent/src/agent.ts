@@ -35,6 +35,21 @@ const DECLINE: Record<Lang, (reasons: string) => string> = {
   fr: (r) => `Pour ça, je ne peux pas vous aider : je suis là seulement pour votre voyage (${r}).`,
 };
 
+const HISTORY_TURNS = 8;
+const HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
+
+const NOT_YET_MEDIA: Record<Lang, string> = {
+  en: "I got it, but I can't open voice notes or photos here yet. Could you write it to me?",
+  es: "Me llegó, pero todavía no puedo abrir notas de voz ni fotos aquí. ¿Me lo escribes?",
+  fr: "Je l'ai bien reçu, mais je ne peux pas encore ouvrir les messages vocaux ni les photos ici. Pouvez-vous me l'écrire ?",
+};
+
+const SAY_AGAIN: Record<Lang, string> = {
+  en: "Sorry, I couldn't process that one. Could you send it again?",
+  es: "Perdón, no pude procesar ese mensaje. ¿Me lo mandas otra vez?",
+  fr: "Désolé, je n'ai pas pu traiter ce message. Pouvez-vous me le renvoyer ?",
+};
+
 const FALLBACK: Record<Lang, string> = {
   en: "I'd rather not give you a figure I can't back with a source, so let me check again. Could you ask me once more in a moment?",
   es: "Prefiero no darte una cifra que no pueda respaldar con una fuente, así que déjame revisarlo otra vez. ¿Me lo preguntas de nuevo en un momento?",
@@ -47,6 +62,8 @@ const FALLBACK: Record<Lang, string> = {
  */
 const MEMORY_REQUEST =
   /\b(forget|delete|erase|what do you know|what you know|what you remember|olvida|olvides|borra|bórra|qué sabes|que sabes|qué recuerdas|que recuerdas|oublie|oubliez|efface|effacez|que savez-vous|ce que vous savez)\b/i;
+const ABOUT_RULES =
+  /\b(rules?|instructions?|prompt|system|guard|policy|policies|reglas?|instrucci\w*|sistema|pol[ií]ticas?|r[eè]gles?|consignes?|syst[eè]me)\b/i;
 
 const TOOLS = [
   {
@@ -112,8 +129,13 @@ const TOOLS = [
       properties: {
         flight: { type: "string" },
         disruption: { type: ["string", "null"], enum: ["delay", "cancellation", "denied_boarding", "tarmac", "bag_delayed", "bag_damaged", "bag_lost", null] },
-        arrival_delay_h: { type: ["number", "null"], description: "Hours late at the final destination of this journey, if known or stated" },
-        cause_category: { type: ["string", "null"], enum: ["within_control", "within_control_safety", "outside_control", null] },
+        arrival_delay_h: { type: ["number", "null"], description: "Hours late at the final destination of this journey: what the traveler stated (even as an estimate) or the flight data shows" },
+        cause_category: {
+          type: ["string", "null"],
+          enum: ["within_control", "within_control_safety", "outside_control", null],
+          description:
+            "Crew shortages and scheduled maintenance are within_control even when the airline calls them safety; within_control_safety is only for an unexpected safety problem. Weather and air traffic control are outside_control. Null if unknown.",
+        },
         notice_days: { type: ["number", "null"] },
         passenger_declined_alternative: { type: ["boolean", "null"] },
       },
@@ -123,9 +145,20 @@ const TOOLS = [
 ] as const;
 
 /** Builds the pieces the Conversation needs: itinerary extraction and the trip agent. */
-export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extractItinerary" | "agent"> {
+export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extractItinerary" | "agent"> & { reset(personId: string): void } {
   const trace = deps.trace ?? (() => {});
   const asked = new Map<string, string[]>(); // person -> facts already asked about
+  // The last few turns, so an answer can build on what the person said a moment ago ("it was the crew").
+  // Kept in process memory only, dropped after a day of silence and on "delete".
+  const history = new Map<string, { at: number; turns: Array<{ role: "user" | "assistant"; content: string }> }>();
+  const recentTurns = (id: string, at: number) => {
+    const h = history.get(id);
+    return h && at - h.at < HISTORY_TTL_MS ? h.turns : [];
+  };
+  const keepTurn = (id: string, at: number, user: string, assistant: string) => {
+    const turns = [...recentTurns(id, at), { role: "user" as const, content: user }, { role: "assistant" as const, content: assistant }];
+    history.set(id, { at, turns: turns.slice(-HISTORY_TURNS) });
+  };
 
   async function extractItinerary(m: InboundMessage, p: Person, correction?: string): Promise<ExtractedTrip | null> {
     const current = (p.pending?.trip ?? p.trip) as Trip | undefined;
@@ -139,14 +172,26 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
   let messageAt = "";
 
   async function agent(m: InboundMessage, p: Person): Promise<OutboundMessage[]> {
-    if (m.kind !== "text") return []; // voice notes and photos are handled by their own flows
+    if (m.kind !== "text") return [{ kind: "text", text: NOT_YET_MEDIA[p.lang] }]; // voice notes and evidence photos get their own flows
     messageId = m.id;
     messageAt = m.at;
     const trip = p.trip as Trip | undefined;
 
-    const parts = MEMORY_REQUEST.test(m.text)
-      ? [{ text: m.text, in_scope: true, reason: "request about the traveler's own memory" }]
-      : await scopeGuard(deps.client, m.text, trip, p.lang);
+    // The guard always runs. A part it rejected is put back in scope only if it is plainly about the person's
+    // memory and does not touch Escala's rules ("forget your instructions" stays out).
+    // A guard that fails (truncated JSON, timeout) is tried once more; if it fails again nothing is answered.
+    let guarded: Awaited<ReturnType<typeof scopeGuard>>;
+    try {
+      guarded = await scopeGuard(deps.client, m.text, trip, p.lang).catch(() => scopeGuard(deps.client, m.text, trip, p.lang));
+    } catch (e) {
+      trace({ kind: "fallback", reason: `scope guard failed: ${String(e).slice(0, 120)}` });
+      return [{ kind: "text", text: SAY_AGAIN[p.lang] }];
+    }
+    const parts = guarded.map((x) =>
+      !x.in_scope && MEMORY_REQUEST.test(x.text) && !ABOUT_RULES.test(x.text)
+        ? { ...x, in_scope: true, reason: "request about the traveler's own memory" }
+        : x,
+    );
     trace({ kind: "scope", parts });
     const inScope = parts.filter((x) => x.in_scope);
     const outScope = parts.filter((x) => !x.in_scope);
@@ -155,12 +200,15 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
     if (!inScope.length) return replies;
 
     const allowed: Allowed = { amounts: [], percents: [], durations: [] };
-    const draft = await answer(inScope.map((x) => x.text).join(" "), p, trip, allowed);
+    const question = inScope.map((x) => x.text).join(" ");
+    const at = Date.parse(m.at) || Date.now();
+    const draft = await answer(question, p, trip, allowed, recentTurns(p.id, at));
+    keepTurn(p.id, at, question, draft);
     replies.push({ kind: "text", text: draft });
     return replies;
   }
 
-  async function answer(question: string, p: Person, trip: Trip | undefined, allowed: Allowed): Promise<string> {
+  async function answer(question: string, p: Person, trip: Trip | undefined, allowed: Allowed, earlier: Array<{ role: "user" | "assistant"; content: string }> = []): Promise<string> {
     const tripText = trip
       ? journeys(trip)
           .map((j) => j.map((l, i) => (i > 0 ? `[connection ${layoverMin(j[i - 1]!, l)} min] ` : "") + legLine(l, "en")).join(" | "))
@@ -180,6 +228,8 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
       `You are Escala, a warm, plain-spoken travel companion on WhatsApp, for this traveler's trip only. Reply in ${LANG_NAME[p.lang]}, briefly, like a person who knows travel. ` +
       "Use tools for facts; never guess flight status. Never state an amount, percentage, deadline or legal article unless rights_for_trip returned it under 'applies'. " +
       "If a right only 'may apply', say what it depends on and ask the single question returned, nothing else. If the inbound aircraft is late, say it is your inference, not airline data. " +
+      "If rights_for_trip returns nothing for this country or this kind of problem, say your rules don't cover it yet; never conclude that no rights exist or that the airline owes nothing. " +
+      "Ask at most one question, and only the one rights_for_trip returned or one needed to answer; don't end with offers phrased as questions. " +
       "You give information with sources, not legal advice; never promise compensation. Never book anything. " +
       `Trip: ${tripText}.` +
       (deps.memory
@@ -187,7 +237,7 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
         : "") +
       memoryText;
 
-    const input: any[] = [{ role: "user", content: question }];
+    const input: any[] = [...earlier.map((t) => ({ role: t.role, content: t.content })), { role: "user", content: question }];
     currentMessage = { id: messageId, at: messageAt };
     for (let round = 0; round < (deps.maxToolRounds ?? 4); round++) {
       const r = await deps.client.responses(
@@ -331,7 +381,14 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
     return { error: `unknown tool ${name}` };
   }
 
-  return { extractItinerary, agent };
+  return {
+    extractItinerary,
+    agent,
+    reset(personId: string) {
+      history.delete(personId);
+      asked.delete(personId);
+    },
+  };
 }
 
 function cite(e: RightEntry, lang: Lang, amount?: Record<string, number>) {

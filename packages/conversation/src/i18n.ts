@@ -8,6 +8,13 @@ export const MENU_WORDS = ["menu", "menú", "aide", "help", "ayuda"];
 export const PRIVACY_WORDS = ["privacy", "privacidad", "confidentialité", "confidentialite"];
 export const STOP_WORDS = ["stop", "alto", "baja", "arrêt", "arret", "unsubscribe"];
 export const DELETE_WORDS = ["delete", "borrar", "bórralo", "borra todo", "effacer", "efface", "supprimer"];
+/** Erase everything even inside a longer sentence. A lone delete word inside a sentence ("delete the note about my
+ * bag") is a request about one thing and goes to the agent, which forgets just that. */
+export const DELETE_ALL_PHRASES = [
+  "delete everything", "delete all", "delete my data", "erase everything", "erase all",
+  "borra todo", "bórralo todo", "borra mis datos", "borrar todo", "borrar mis datos",
+  "efface tout", "effacez tout", "supprime tout", "supprimez tout", "supprimer mes données", "effacer mes données",
+];
 
 /** First-message language guess. The person can always switch; this only picks the greeting. */
 export function detectLang(text: string): Lang {
@@ -15,10 +22,12 @@ export function detectLang(text: string): Lang {
   const tokens = new Set(lower.split(/[^\p{L}'-]+/u).filter(Boolean));
   const score = (words: string[], chars: string[]) =>
     words.reduce((n, w) => n + (tokens.has(w) ? 1 : 0), 0) + chars.reduce((n, c) => n + (lower.includes(c) ? 1 : 0), 0);
-  const es = score(["hola", "mi", "vuelo", "qué", "gracias", "viaje", "está", "sí", "el", "la", "me", "por", "para"], ["¿", "ñ"]);
-  const fr = score(["bonjour", "mon", "vol", "merci", "est-ce", "voyage", "je", "à", "oui", "le", "c'est", "vous", "pour"], ["ç"]);
-  if (es > fr && es > 0) return "es";
-  if (fr > es && fr > 0) return "fr";
+  // Only words that belong to one language; "me", "a", "no" and the like are shared and decide nothing.
+  const en = score(["hi", "hello", "the", "my", "flight", "what", "is", "are", "i", "i'm", "you", "and", "thanks", "yes", "can", "do", "how", "of", "with", "will", "late"], []);
+  const es = score(["hola", "mi", "vuelo", "qué", "gracias", "viaje", "está", "sí", "el", "la", "los", "las", "por", "para", "que", "es", "y", "tengo", "puedes"], ["¿", "ñ"]);
+  const fr = score(["bonjour", "mon", "vol", "merci", "est-ce", "voyage", "je", "à", "oui", "le", "les", "c'est", "vous", "pour", "et", "est", "j'ai", "pouvez-vous"], ["ç"]);
+  if (es > fr && es > en) return "es";
+  if (fr > es && fr > en) return "fr";
   return "en";
 }
 
