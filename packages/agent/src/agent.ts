@@ -2,7 +2,7 @@ import type { InboundMessage, OutboundMessage } from "@escala/channel";
 import type { ConversationDeps, ExtractedTrip, Lang, Person } from "@escala/conversation";
 import { arrivalMinutesLate, inboundDelayMinutes, type FlightFeed } from "@escala/feeds";
 import { outputText, type MetaClient } from "@escala/meta-client";
-import { ConsentError, type MemoryStore } from "@escala/memory";
+import { ConsentError, tripRetention, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
 import { legLine } from "./format.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
@@ -168,9 +168,36 @@ const TOOLS = [
   },
 ] as const;
 
+/** Facts remembered before any itinerary was shared expire after this many days. */
+const NO_TRIP_RETENTION_DAYS = 30;
+
+/** When a trip fact expires: the day after the last flight plus the claim window, or 30 days without a trip. */
+export function tripFactExpiry(trip: Trip | undefined, nowIso: string, claimDays: number): string {
+  const last = trip?.legs.map((l) => l.date).sort().at(-1);
+  if (!last) {
+    const d = new Date(Date.parse(nowIso) || Date.now());
+    d.setUTCDate(d.getUTCDate() + NO_TRIP_RETENTION_DAYS);
+    return d.toISOString();
+  }
+  return tripRetention(`${last}T00:00:00Z`, claimDays + 1);
+}
+
+/** The longest claim or lawsuit deadline in the rights base, in days (years and months rounded up). */
+export function longestDeadlineDays(entries: RightEntry[]): number {
+  let max = 0;
+  for (const e of entries) {
+    for (const [k, v] of Object.entries(e.deadlines ?? {})) {
+      const days = /_years?$/.test(k) ? v * 366 : /_months?$/.test(k) ? v * 31 : /_days?$|_days_/.test(k) ? v : 0;
+      max = Math.max(max, days);
+    }
+  }
+  return max;
+}
+
 /** Builds the pieces the Conversation needs: itinerary extraction and the trip agent. */
 export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extractItinerary" | "agent"> & { reset(personId: string): void } {
   const trace = deps.trace ?? (() => {});
+  const longestClaimDays = longestDeadlineDays(deps.entries);
   const asked = new Map<string, string[]>(); // person -> facts already asked about
   // The last few turns, so an answer can build on what the person said a moment ago ("it was the crew").
   // Kept in process memory only, dropped after a day of silence and on "delete".
@@ -356,6 +383,8 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
           topic: String(args.topic).slice(0, 60),
           statement: String(args.statement).slice(0, 300),
           source: { kind: "message", ref: currentMessage.id, at: currentMessage.at, quote: String(args.quote).slice(0, 200) },
+          // Trip facts expire with the trip plus the longest claim deadline; profile facts stay until the person says otherwise.
+          ...(args.scope === "profile" ? {} : { expiresAt: tripFactExpiry(trip, currentMessage.at, longestClaimDays) }),
         });
         return { remembered: f.id, scope: f.scope };
       } catch (err) {

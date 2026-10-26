@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { fromWebhook, verifySignature, type InboundMessage } from "@escala/channel";
+import { PRIVACY_HTML } from "./privacy.ts";
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const SEEN_LIMIT = 10_000;
@@ -44,6 +45,7 @@ export function createWebhookHandler(opts: WebhookOptions) {
     }
 
     if (url.pathname === "/health" && req.method === "GET") return reply(200, "ok");
+    if (url.pathname === "/privacy" && req.method === "GET") return reply(200, PRIVACY_HTML, "text/html; charset=utf-8");
     if (url.pathname !== "/webhook") return reply(404);
 
     if (req.method === "GET") {

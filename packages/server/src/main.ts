@@ -35,6 +35,10 @@ const client = createMetaClient({ apiKey: need("META_API_KEY"), usage, timeoutMs
 const dbPath = env.MEMORY_DB ?? "data/memory.db";
 mkdirSync(dirname(dbPath), { recursive: true });
 const memory = new MemoryStore({ path: dbPath, crypto: MemoryCrypto.fromEnv() });
+// Retention is enforced, not just promised: expired facts are deleted at start and every hour.
+const purge = () => log({ event: "purge", deleted: memory.purgeExpired() });
+purge();
+setInterval(purge, 60 * 60 * 1000).unref();
 const scenario = fileURLToPath(new URL("../../feeds/scenarios/demo-inbound-late.yaml", import.meta.url));
 const feed = new ReplayFeed(loadScenario(scenario));
 

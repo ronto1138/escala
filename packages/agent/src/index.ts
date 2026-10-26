@@ -1,4 +1,4 @@
-export { createEscalaAgent, type AgentDeps, type TraceStep } from "./agent.ts";
+export { createEscalaAgent, longestDeadlineDays, tripFactExpiry, type AgentDeps, type TraceStep } from "./agent.ts";
 export { dayLabel, legLine, timeLabel } from "./format.ts";
 export { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
 export { AIRLINES, AIRPORTS, type Airlines, factsFor, greatCircleKm, journeys, type Leg, type Trip } from "./trip.ts";

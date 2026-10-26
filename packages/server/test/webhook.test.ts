@@ -153,3 +153,16 @@ describe("Muse Code security audit (Oct 26) before the first deploy", () => {
     expect(ch.windowOpen("15550001111")).toBe(false);
   });
 });
+
+describe("privacy policy page", () => {
+  it("is served at /privacy and names the operator and the controls", async () => {
+    const { base } = await start();
+    const r = await fetch(`${base}/privacy`);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toMatch(/text\/html/);
+    const html = await r.text();
+    expect(html).toContain("Kokorio, S.A.P.I. de C.V.");
+    expect(html).toMatch(/not end-to-end encrypted/);
+    expect(html).toMatch(/Delete everything/);
+  });
+});
