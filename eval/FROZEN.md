@@ -19,3 +19,9 @@ evaluation questions were not tuned to the implementation afterwards.
 | `derechos-retenido.jsonl` | held-out | `1f6be7ee539841d06fde87b08de5f1a98dc4ba9bfd17cbd0e6ea1dfb8a82bae8` |
 | `alcance-retenido.jsonl` | held-out | `f83fe8e97ee94c85a52a174deb761bbd0cb4747a30a74dd31cb11b2a9d27eaff` |
 | `itinerarios-retenido.md` | held-out | `2ed423ab7d680c2717139f7d37505e392e26577166ec78110f24dd44b8054818` |
+
+## Corrections
+
+| Date | File | Old SHA-256 | New SHA-256 | Reason |
+|---|---|---|---|---|
+| 2026-10-26 | `alcance.jsonl` | `be2b670d86b12ddc21df3544b0c3b747c96377122b634eae03d7cbc26ed06209` | `0575bce90c50528eab864951ae8d8a49ce88a8327ecc91972a7cfe230892b1c2` | Product scope widened by the founder: Escala also suggests what to do **when asked, about places on the user's own trip** (destinations and layovers). A-EN-06, A-FR-06 and the second part of A-FR-02 move from out of scope to in scope. Suggestions must be labeled as such and state no hours or prices without a source. The same rule is applied to the held-out set when it is first run (Day 8), and logged here. Suggestions about places outside the trip remain out of scope. |
