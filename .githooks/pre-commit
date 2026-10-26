@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Blocks commits that look like they contain secrets. A stopgap until gitleaks is installed.
+set -euo pipefail
+pat='(sk-[A-Za-z0-9_-]{20,}|pplx-[A-Za-z0-9]{20,}|EAA[A-Za-z0-9]{30,}|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30,}|xox[abp]-[A-Za-z0-9-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(api[_-]?key|secret|token|password)["'"'"' ]*[:=]["'"'"' ]*[A-Za-z0-9_\-]{24,})'
+if git diff --cached -U0 --no-color | grep -E '^\+' | grep -v '^+++' | grep -nE -i "$pat"; then
+  echo "pre-commit: possible secret above. Commit blocked." >&2
+  exit 1
+fi
+for f in $(git diff --cached --name-only); do
+  case "$f" in .env|.env.*) [ "$f" != ".env.example" ] && { echo "pre-commit: $f must not be committed" >&2; exit 1; } ;; esac
+done

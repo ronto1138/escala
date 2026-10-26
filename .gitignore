@@ -1,0 +1,15 @@
+# Secrets and local state
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+usage.jsonl
+*.db
+*.sqlite
+data/
+# Dependencies and builds
+node_modules/
+dist/
+coverage/
+.DS_Store
