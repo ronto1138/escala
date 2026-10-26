@@ -36,13 +36,13 @@ export interface CallOptions {
 }
 
 export class MetaApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly body: string,
-  ) {
+  readonly status: number;
+  readonly body: string;
+  constructor(message: string, status: number, body: string) {
     super(message);
     this.name = "MetaApiError";
+    this.status = status;
+    this.body = body;
   }
 }
 

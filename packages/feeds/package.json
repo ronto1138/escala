@@ -1,0 +1,12 @@
+{
+  "name": "@portulain/feeds",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "yaml": "2.9.1"
+  }
+}

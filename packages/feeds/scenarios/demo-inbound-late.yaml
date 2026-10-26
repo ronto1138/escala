@@ -1,0 +1,64 @@
+# SIMULATED DATA. Fictitious airline ZZ; flights, times and aircraft are invented. AeroAPI v4 flight shape.
+name: demo-inbound-late
+start: "2026-11-02T11:00:00Z"
+flights:
+  - &base
+    ident: ZZ1233
+    ident_iata: ZZ1233
+    fa_flight_id: ZZ1233-20261102-replay-0001
+    operator: ZZ
+    operator_iata: ZZ
+    inbound_fa_flight_id: null
+    cancelled: false
+    diverted: false
+    origin: { code: KDEN, code_icao: KDEN, code_iata: DEN, timezone: America/Denver }
+    destination: { code: KAUS, code_icao: KAUS, code_iata: AUS, timezone: America/Chicago }
+    gate_origin: B21
+    gate_destination: "12"
+    terminal_origin: null
+    terminal_destination: null
+    baggage_claim: null
+    scheduled_out: "2026-11-02T10:15:00Z"
+    estimated_out: "2026-11-02T10:15:00Z"
+    actual_out: null
+    scheduled_in: "2026-11-02T12:30:00Z"
+    estimated_in: "2026-11-02T12:30:00Z"
+    actual_in: null
+  - <<: *base
+    ident: ZZ1234
+    ident_iata: ZZ1234
+    fa_flight_id: ZZ1234-20261102-replay-0002
+    inbound_fa_flight_id: ZZ1233-20261102-replay-0001
+    origin: { code: KAUS, code_icao: KAUS, code_iata: AUS, timezone: America/Chicago }
+    destination: { code: KORD, code_icao: KORD, code_iata: ORD, timezone: America/Chicago }
+    gate_origin: "12"
+    gate_destination: K9
+    terminal_destination: "3"
+    scheduled_out: "2026-11-02T13:10:00Z"
+    estimated_out: "2026-11-02T13:10:00Z"
+    scheduled_in: "2026-11-02T15:35:00Z"
+    estimated_in: "2026-11-02T15:35:00Z"
+  - <<: *base
+    ident: ZZ567
+    ident_iata: ZZ567
+    fa_flight_id: ZZ567-20261102-replay-0003
+    inbound_fa_flight_id: null
+    origin: { code: KORD, code_icao: KORD, code_iata: ORD, timezone: America/Chicago }
+    destination: { code: CYUL, code_icao: CYUL, code_iata: YUL, timezone: America/Toronto }
+    gate_origin: K14
+    gate_destination: "52"
+    terminal_origin: "3"
+    scheduled_out: "2026-11-02T16:30:00Z"
+    estimated_out: "2026-11-02T16:30:00Z"
+    scheduled_in: "2026-11-02T18:40:00Z"
+    estimated_in: "2026-11-02T18:40:00Z"
+steps:
+  - minute: 20 # the inbound aircraft leaves Denver late
+    patch:
+      ZZ1233-20261102-replay-0001: { estimated_out: "2026-11-02T11:50:00Z", estimated_in: "2026-11-02T14:05:00Z" }
+  - minute: 60 # the airline updates the Austin departure
+    patch:
+      ZZ1234-20261102-replay-0002: { estimated_out: "2026-11-02T14:50:00Z", estimated_in: "2026-11-02T17:15:00Z" }
+  - minute: 90 # gate change in Austin
+    patch:
+      ZZ1234-20261102-replay-0002: { gate_origin: "17" }

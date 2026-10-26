@@ -1,0 +1,53 @@
+# SIMULATED DATA. Nothing worth telling the traveler happens: small drifts only.
+name: quiet-on-time
+start: "2026-11-02T11:00:00Z"
+flights:
+  - ident: ZZ880
+    ident_iata: ZZ880
+    fa_flight_id: ZZ880-20261102-replay-0101
+    operator: ZZ
+    operator_iata: ZZ
+    inbound_fa_flight_id: ZZ879-20261102-replay-0100
+    cancelled: false
+    diverted: false
+    origin: { code: KAUS, code_icao: KAUS, code_iata: AUS, timezone: America/Chicago }
+    destination: { code: KDEN, code_icao: KDEN, code_iata: DEN, timezone: America/Denver }
+    gate_origin: "8"
+    gate_destination: B30
+    terminal_origin: null
+    terminal_destination: null
+    baggage_claim: null
+    scheduled_out: "2026-11-02T14:00:00Z"
+    estimated_out: "2026-11-02T14:00:00Z"
+    actual_out: null
+    scheduled_in: "2026-11-02T16:20:00Z"
+    estimated_in: "2026-11-02T16:20:00Z"
+    actual_in: null
+  - ident: ZZ879
+    ident_iata: ZZ879
+    fa_flight_id: ZZ879-20261102-replay-0100
+    operator: ZZ
+    operator_iata: ZZ
+    inbound_fa_flight_id: null
+    cancelled: false
+    diverted: false
+    origin: { code: KELP, code_icao: KELP, code_iata: ELP, timezone: America/Denver }
+    destination: { code: KAUS, code_icao: KAUS, code_iata: AUS, timezone: America/Chicago }
+    gate_origin: "3"
+    gate_destination: "8"
+    terminal_origin: null
+    terminal_destination: null
+    baggage_claim: null
+    scheduled_out: "2026-11-02T11:30:00Z"
+    estimated_out: "2026-11-02T11:30:00Z"
+    actual_out: null
+    scheduled_in: "2026-11-02T12:50:00Z"
+    estimated_in: "2026-11-02T12:50:00Z"
+    actual_in: null
+steps:
+  - minute: 30
+    patch:
+      ZZ879-20261102-replay-0100: { estimated_out: "2026-11-02T11:36:00Z", estimated_in: "2026-11-02T12:57:00Z" }
+  - minute: 60
+    patch:
+      ZZ880-20261102-replay-0101: { estimated_in: "2026-11-02T16:27:00Z" }
