@@ -90,7 +90,7 @@ describe("Cloud API channel", () => {
     const ch = new CloudApiChannel({ accessToken: "TOKEN", phoneNumberId: "123", fetch: fakeFetch(calls, { messages: [{ id: "wamid.out" }] }), now: () => now });
     await ch.deliver({ id: "wamid.in", from: "15550001111", at: "2026-11-02T11:59:00Z", kind: "text", text: "hi" });
     expect(await ch.send("15550001111", { kind: "text", text: "Hello" })).toEqual({ id: "wamid.out" });
-    expect(calls[0]!.url).toBe("https://graph.facebook.com/v25.0/123/messages");
+    expect(calls[0]!.url).toBe("https://graph.facebook.com/v26.0/123/messages");
     expect(calls[0]!.init.headers.Authorization).toBe("Bearer TOKEN");
     expect(calls[0]!.init.body).not.toContain("TOKEN");
 

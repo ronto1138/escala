@@ -39,7 +39,7 @@ export class CloudApiChannel implements ChannelPort {
 
   constructor(opts: CloudApiOptions) {
     if (!opts.accessToken || !opts.phoneNumberId) throw new Error("WhatsApp access token and phone number id are required");
-    this.opts = { graphVersion: "v25.0", fetch: globalThis.fetch, now: Date.now, ...opts } as typeof this.opts;
+    this.opts = { graphVersion: "v26.0", fetch: globalThis.fetch, now: Date.now, ...opts } as typeof this.opts;
   }
 
   onInbound(handler: (m: InboundMessage) => Promise<void>) {
