@@ -202,7 +202,12 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
     const allowed: Allowed = { amounts: [], percents: [], durations: [] };
     const question = inScope.map((x) => x.text).join(" ");
     const at = Date.parse(m.at) || Date.now();
-    const draft = await answer(question, p, trip, allowed, recentTurns(p.id, at));
+    let draft = await answer(question, p, trip, allowed, recentTurns(p.id, at));
+    if (!draft.trim()) {
+      // The model sometimes spends its whole budget reasoning and writes nothing; WhatsApp rejects empty text.
+      trace({ kind: "fallback", reason: "empty answer" });
+      draft = SAY_AGAIN[p.lang];
+    }
     keepTurn(p.id, at, question, draft);
     replies.push({ kind: "text", text: draft });
     return replies;
@@ -228,6 +233,7 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
       `You are Escala, a warm, plain-spoken travel companion on WhatsApp, for this traveler's trip only. Reply in ${LANG_NAME[p.lang]}, briefly, like a person who knows travel. ` +
       "Use tools for facts; never guess flight status. Never state an amount, percentage, deadline or legal article unless rights_for_trip returned it under 'applies'. " +
       "If a right only 'may apply', say what it depends on and ask the single question returned, nothing else. If the inbound aircraft is late, say it is your inference, not airline data. " +
+      "If a rule is under 'below_threshold', mention it briefly with its threshold and source and say this trip does not reach it (\"the US refund rule needs 6 hours on an international trip; you're at 3.5\"). " +
       "If rights_for_trip returns nothing for this country or this kind of problem, say your rules don't cover it yet; never conclude that no rights exist or that the airline owes nothing. " +
       "Ask at most one question, and only the one rights_for_trip returned or one needed to answer; don't end with offers phrased as questions. " +
       "You give information with sources, not legal advice; never promise compensation. Never book anything. " +
@@ -370,10 +376,13 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
         numbersIn(e.applies_when).forEach((n) => allowed.durations.push(n));
         numbersIn(e.deadlines ?? {}).forEach((n) => allowed.durations.push(n));
       }
+      // A rule missed only by a threshold is said with its threshold and source; its amounts are never allowed.
+      for (const r of a.belowThreshold) numbersIn(byId.get(r.id)!.applies_when).forEach((n) => allowed.durations.push(n));
       if (typeof facts.arrival_delay_h === "number") allowed.durations.push(facts.arrival_delay_h);
       return {
         applies: a.citable.filter((r) => r.outcome === "applies").map((r) => cite(byId.get(r.id)!, p.lang, r.amount)),
         may_apply: a.citable.filter((r) => r.outcome === "may_apply").map((r) => ({ ...cite(byId.get(r.id)!, p.lang), depends_on: r.missing })),
+        below_threshold: a.belowThreshold.map((r) => ({ ...cite(byId.get(r.id)!, p.lang), why: r.reason })),
         question: a.question?.text ?? null,
         does_not_apply: a.results.filter((r) => r.outcome === "not_applies").map((r) => ({ id: r.id, why: r.reason })),
       };

@@ -97,7 +97,15 @@ export interface Assessment {
   citable: EntryResult[];
   /** The single question worth asking, if any. */
   question?: { fact: string; text: string; resolves: string[] };
+  /**
+   * Rules that do not apply only because this trip falls short of a threshold (3.5 h when the rule needs 6 h).
+   * Worth saying: "the US refund rule needs 6 hours on an international trip; you are at 3.5".
+   */
+  belowThreshold: EntryResult[];
 }
+
+/** Numeric facts whose threshold alone can decide a rule. */
+const THRESHOLD_FACTS = ["arrival_delay_h", "notice_days", "distance_km"] as const;
 
 /**
  * Evaluates all entries and picks at most one question: the missing fact that resolves the most entries,
@@ -118,9 +126,19 @@ export function assess(
   for (const r of citable) for (const f of r.missing) if (texts.has(f) && !asked.has(f)) tally.set(f, [...(tally.get(f) ?? []), r.id]);
   const best = [...tally.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))[0];
 
+  const belowThreshold = results.filter((r, i) => {
+    if (r.outcome !== "not_applies" || /in force/.test(r.reason)) return false;
+    const given = THRESHOLD_FACTS.filter((f) => typeof facts[f] === "number");
+    if (!given.length) return false;
+    const without: TripFacts = { ...facts };
+    for (const f of given) delete without[f];
+    return evaluateEntry(entries[i]!, without).outcome !== "not_applies";
+  });
+
   return {
     results,
     citable,
+    belowThreshold,
     ...(best ? { question: { fact: best[0], text: texts.get(best[0])!, resolves: best[1] } } : {}),
   };
 }

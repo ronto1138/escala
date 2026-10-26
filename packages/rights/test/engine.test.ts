@@ -60,6 +60,13 @@ describe("demo trip: Austin -> Chicago -> Montreal, 3.5 h late, inbound aircraft
     expect(ca).toMatchObject({ outcome: "applies", amount: { CAD: 400 } });
   });
 
+  it("says the US refund rule is below its 6-hour threshold, and never lists the EU as one", () => {
+    const a = assess(entries, facts, { lang: "en" });
+    expect(a.belowThreshold.map((r) => r.id)).toEqual(["us-260-refund"]);
+    const late = assess(entries, { ...facts, arrival_delay_h: 7 }, { lang: "en" });
+    expect(late.belowThreshold.map((r) => r.id)).not.toContain("us-260-refund");
+  });
+
   it("never asks the same question twice on a trip", () => {
     const a = assess(entries, facts, { lang: "es", alreadyAsked: ["cause_category"] });
     expect(a.question?.fact).not.toBe("cause_category");
