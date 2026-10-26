@@ -62,10 +62,11 @@ const describe = (c: Condition) => JSON.stringify(c);
 export function evaluateEntry(entry: RightEntry, facts: TripFacts): EntryResult {
   const verified = entry.status === "VERIFICADO";
   const asOf = facts.as_of;
-  if (asOf && entry.valid_from && asOf < entry.valid_from) {
+  const day = (d: string) => Date.parse(d.length === 10 ? `${d}T00:00:00Z` : d);
+  if (asOf && entry.valid_from && day(asOf) < day(entry.valid_from)) {
     return { id: entry.id, outcome: "not_applies", missing: [], reason: `not in force until ${entry.valid_from}`, verified };
   }
-  if (asOf && entry.valid_to && asOf > entry.valid_to) {
+  if (asOf && entry.valid_to && day(asOf) > day(entry.valid_to)) {
     return { id: entry.id, outcome: "not_applies", missing: [], reason: `no longer in force since ${entry.valid_to}`, verified };
   }
   if (!asOf && entry.valid_from) {

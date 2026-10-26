@@ -44,3 +44,10 @@ describe("dates are written by code in the person's language", () => {
     expect(legLine(demo.legs[1]!, "fr")).toBe("ZZ 567 · lun 2 nov · Chicago O'Hare 10 h 30 → Montreal 13 h 40");
   });
 });
+
+describe("Muse Code audit (Oct 26): unknown airports", () => {
+  it("B3: an unknown airport does not make a domestic trip international", () => {
+    const t: Trip = { bookingRef: null, legs: [{ flight: "ZZ1", date: "2026-11-02", from: "AUS", to: "XXX", dep_local: "07:00", arr_local: "09:00" }] };
+    expect(factsFor(t, "ZZ1").itinerary_type).toBeUndefined();
+  });
+});

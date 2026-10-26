@@ -136,3 +136,31 @@ describe("on request only", () => {
     expect(lastText()).toBe(T.en.stopped);
   });
 });
+
+describe("Muse Code audit (Oct 26): privacy promises are kept", () => {
+  it("P1: DELETE / BORRAR / EFFACER erase the person, and the bot says so", async () => {
+    const sim = new SimChannel();
+    const erased: string[] = [];
+    const conv = new Conversation({ channel: sim, extractItinerary: async () => null, onDelete: async (id) => void erased.push(id) });
+    await sim.userSends("7", { kind: "text", text: "Hola" });
+    await sim.userSends("7", { kind: "text", text: "Borrar" });
+    expect(conv.people.has("7")).toBe(false);
+    expect(erased).toEqual(["7"]);
+    const last = sim.transcript.at(-1)!.message as { text: string };
+    expect(last.text).toMatch(/Borré todo/);
+  });
+
+  it("P2: 'please stop' and 'stop,' stop the messages", async () => {
+    for (const text of ["please stop", "stop,"]) {
+      const sim = new SimChannel();
+      const conv = new Conversation({ channel: sim, extractItinerary: async () => null });
+      await sim.userSends("8", { kind: "text", text: "hi" });
+      await sim.userSends("8", { kind: "text", text });
+      expect(conv.people.get("8")?.stage).toBe("stopped");
+    }
+  });
+
+  it("B9: English with 'el' or 'la' inside words stays English", () => {
+    expect(detectLang("travel alone please")).toBe("en");
+  });
+});

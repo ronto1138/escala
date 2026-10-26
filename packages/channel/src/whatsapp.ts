@@ -21,7 +21,8 @@ export const LIMITS = {
 export function validateOutbound(m: OutboundMessage): string[] {
   const p: string[] = [];
   const max = (what: string, s: string | undefined, n: number) => {
-    if (s !== undefined && [...s].length > n) p.push(`${what} is ${[...s].length} characters (max ${n}): "${s}"`);
+    // Only a short prefix of the text goes into the error: messages can carry personal data.
+    if (s !== undefined && [...s].length > n) p.push(`${what} is ${[...s].length} characters (max ${n}): "${[...s].slice(0, 24).join("")}…"`);
   };
   const required = (what: string, s: string | undefined) => {
     if (!s || !s.trim()) p.push(`${what} is empty`);
@@ -150,7 +151,10 @@ export function fromWebhook(payload: any): InboundMessage[] {
   for (const entry of payload?.entry ?? []) {
     for (const change of entry?.changes ?? []) {
       for (const m of change?.value?.messages ?? []) {
-        const base = { id: String(m.id), from: String(m.from), at: new Date(Number(m.timestamp) * 1000).toISOString() };
+        // Skip anything malformed instead of crashing the whole batch.
+        const ts = Number(m?.timestamp);
+        if (typeof m?.id !== "string" || typeof m?.from !== "string" || !/^\d{6,15}$/.test(m.from) || !Number.isFinite(ts)) continue;
+        const base = { id: m.id, from: m.from, at: new Date(ts * 1000).toISOString() };
         switch (m.type) {
           case "text":
             out.push({ ...base, kind: "text", text: String(m.text?.body ?? "") });
@@ -160,6 +164,7 @@ export function fromWebhook(payload: any): InboundMessage[] {
           case "video":
           case "document": {
             const media = m[m.type] ?? {};
+            if (typeof media.id !== "string") break;
             out.push({
               ...base,
               kind: m.type,

@@ -136,3 +136,15 @@ describe("simulator", () => {
     expect(seen).toEqual(["interactive"]);
   });
 });
+
+describe("Muse Code audit (Oct 26): malformed webhooks", () => {
+  it("S2: skips messages without id, sender or a valid timestamp instead of crashing", () => {
+    const payload = { entry: [{ changes: [{ value: { messages: [
+      { from: "15550001111", id: "wamid.ok", timestamp: "1793520000", type: "text", text: { body: "hi" } },
+      { from: "15550001111", id: "wamid.no-ts", type: "text", text: { body: "x" } },
+      { from: "not-a-number", id: "wamid.bad-from", timestamp: "1793520000", type: "text", text: { body: "x" } },
+      { from: "15550001111", id: "wamid.no-media", timestamp: "1793520000", type: "image", image: {} },
+    ] } }] }] };
+    expect(fromWebhook(payload).map((m) => m.id)).toEqual(["wamid.ok"]);
+  });
+});

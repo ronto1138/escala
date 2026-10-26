@@ -7,13 +7,16 @@ export const LANGS: Lang[] = ["en", "es", "fr"];
 export const MENU_WORDS = ["menu", "menú", "aide", "help", "ayuda"];
 export const PRIVACY_WORDS = ["privacy", "privacidad", "confidentialité", "confidentialite"];
 export const STOP_WORDS = ["stop", "alto", "baja", "arrêt", "arret", "unsubscribe"];
+export const DELETE_WORDS = ["delete", "borrar", "bórralo", "borra todo", "effacer", "efface", "supprimer"];
 
 /** First-message language guess. The person can always switch; this only picks the greeting. */
 export function detectLang(text: string): Lang {
-  const t = ` ${text.toLowerCase()} `;
-  const score = (words: string[]) => words.reduce((n, w) => n + (t.includes(w) ? 1 : 0), 0);
-  const es = score([" hola", " mi ", " vuelo", " ¿", "qué", " gracias", " viaje", " está", " sí", "ñ", " el ", " la "]);
-  const fr = score([" bonjour", " mon ", " vol ", " merci", " est-ce", " voyage", " je ", " à ", " oui", "ç", " le ", " c'est"]);
+  const lower = text.toLowerCase();
+  const tokens = new Set(lower.split(/[^\p{L}'-]+/u).filter(Boolean));
+  const score = (words: string[], chars: string[]) =>
+    words.reduce((n, w) => n + (tokens.has(w) ? 1 : 0), 0) + chars.reduce((n, c) => n + (lower.includes(c) ? 1 : 0), 0);
+  const es = score(["hola", "mi", "vuelo", "qué", "gracias", "viaje", "está", "sí", "el", "la", "me", "por", "para"], ["¿", "ñ"]);
+  const fr = score(["bonjour", "mon", "vol", "merci", "est-ce", "voyage", "je", "à", "oui", "le", "c'est", "vous", "pour"], ["ç"]);
   if (es > fr && es > 0) return "es";
   if (fr > es && fr > 0) return "fr";
   return "en";

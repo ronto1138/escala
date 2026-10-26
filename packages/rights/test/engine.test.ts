@@ -65,3 +65,10 @@ describe("demo trip: Austin -> Chicago -> Montreal, 3.5 h late, inbound aircraft
     expect(a.question?.fact).not.toBe("cause_category");
   });
 });
+
+describe("Muse Code audit (Oct 26): engine edge cases", () => {
+  it("C8: an empty all/any is rejected by the validator", () => {
+    const bad = { ...entries[0]!, id: "bad", applies_when: { all: [] }, tests: [] };
+    expect(validateEntries([bad]).some((p) => p.includes("empty all/any"))).toBe(true);
+  });
+});

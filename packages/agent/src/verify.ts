@@ -13,7 +13,7 @@ export interface Allowed {
 }
 
 export interface Claim {
-  kind: "amount" | "percent" | "duration";
+  kind: "amount" | "percent" | "duration" | "number_word";
   text: string;
   value: number;
   currency?: string;
@@ -30,9 +30,20 @@ const CURRENCY: Record<string, string> = {
   gbp: "GBP", "£": "GBP", mxn: "MXN", pesos: "MXN", dólares: "$", dollars: "$", dollar: "$",
 };
 const NUM = String.raw`\d{1,3}(?:[   .,]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?`;
-const CUR = String.raw`US\$|CA\$|C\$|USD|CAD|EUR|GBP|MXN|€|£|\$|euros?|pesos|dólares|dollars?`;
-const UNIT_H = String.raw`h|hrs?|hours?|horas?|heures?`;
-const UNIT_D = String.raw`days?|días?|dias?|jours?`;
+const CUR = String.raw`US\$|CA\$|C\$|USD|CAD|EUR|GBP|MXN|€|£|\$|euros?|pesos|(?:US\s|U\.S\.\s|canadian\s)?dollars?|dólares(?:\s(?:estadounidenses|canadienses))?|dollars?\s(?:américains|canadiens)`;
+const UNIT = String.raw`h|hrs?|hours?|horas?|heures?|min|minutes?|minutos?|days?|días?|dias?|jours?|weeks?|semanas?|semaines?|months?|meses|mes|mois|years?|años?|ans?|années?`;
+const SP = String.raw`[\s\u00a0\u202f]+`;
+/** Optional whitespace. (`${SPO}` would be a lazy "one or more", not optional.) */
+const SPO = String.raw`[\s\u00a0\u202f]*`;
+/** Spelled-out numbers right before money, a percentage or a time unit cannot be checked: the draft fails closed. */
+const WORD = String.raw`one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|` +
+  String.raw`un|uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|quince|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien|ciento|cientos|doscientos|trescientos|cuatrocientos|quinientos|seiscientos|setecientos|ochocientos|novecientos|mil|` +
+  String.raw`une|deux|trois|quatre|cinq|sept|huit|neuf|dix|onze|douze|quinze|vingt|trente|quarante|cinquante|soixante|cent|cents|mille`;
+const NUMBER_WORDS_BEFORE_UNIT = () =>
+  new RegExp(
+    String.raw`\b(?:${WORD})(?:[\s-]+(?:and|y|et|-)?[\s-]*(?:${WORD}))*[\s\u00a0]+(?:${CUR}|percent|por ciento|pour cent|${UNIT})\b`,
+    "gi",
+  );
 
 /** Parses "1,075", "1 075", "1.075" (thousands) and "3,5" / "3.5" (decimals). */
 export function parseNumber(raw: string): number {
@@ -52,17 +63,34 @@ export function extractClaims(text: string): Claim[] {
       claims.push(c);
     }
   };
-  for (const m of text.matchAll(new RegExp(String.raw`(${CUR})\s?(${NUM})`, "gi"))) {
-    push({ kind: "amount", text: m[0], value: parseNumber(m[2]!), currency: CURRENCY[m[1]!.toLowerCase()] ?? m[1]! }, m.index!);
+  const cur = (raw: string) => {
+    const r = raw.toLowerCase().replace(/\s+/g, " ");
+    if (/\b(us|u\.s\.)\b|américains|estadounidenses/.test(r)) return "USD";
+    if (/canadian|canadiens|canadienses/.test(r)) return "CAD";
+    return CURRENCY[r] ?? CURRENCY[r.split(" ").pop()!] ?? raw;
+  };
+  // A range ("400-600", "400 to 600", "entre 400 y 600") carries two claims; both are checked.
+  const RANGE = String.raw`(${NUM})(?:${SPO}(?:-|–|—|to|a|à|y|et|and)${SPO}(${NUM}))?`;
+  for (const m of text.matchAll(new RegExp(String.raw`(${CUR})${SPO}${RANGE}`, "gi"))) {
+    const c = cur(m[1]!);
+    push({ kind: "amount", text: m[0], value: parseNumber(m[2]!), currency: c }, m.index!);
+    if (m[3]) push({ kind: "amount", text: m[0], value: parseNumber(m[3]), currency: c }, m.index! + 1);
   }
-  for (const m of text.matchAll(new RegExp(String.raw`(${NUM})\s?(${CUR})(?![a-z])`, "gi"))) {
-    push({ kind: "amount", text: m[0], value: parseNumber(m[1]!), currency: CURRENCY[m[2]!.toLowerCase()] ?? m[2]! }, m.index!);
+  for (const m of text.matchAll(new RegExp(String.raw`${RANGE}${SPO}(${CUR})(?![a-z])`, "gi"))) {
+    const c = cur(m[3]!);
+    if (m[2]) push({ kind: "amount", text: m[0], value: parseNumber(m[1]!), currency: c }, m.index! + 2);
+    push({ kind: "amount", text: m[0], value: parseNumber(m[2] ?? m[1]!), currency: c }, m.index!);
   }
-  for (const m of text.matchAll(new RegExp(String.raw`(${NUM})\s?(%|por ciento|percent|pour cent)`, "gi"))) {
+  for (const m of text.matchAll(new RegExp(String.raw`(${NUM})${SPO}(%|por ciento|percent|pour cent)`, "gi"))) {
     push({ kind: "percent", text: m[0], value: parseNumber(m[1]!) }, m.index!);
   }
-  for (const m of text.matchAll(new RegExp(String.raw`(${NUM})\s?(${UNIT_H}|${UNIT_D})\b`, "gi"))) {
+  for (const m of text.matchAll(new RegExp(String.raw`${RANGE}${SPO}(${UNIT})\b`, "gi"))) {
     push({ kind: "duration", text: m[0], value: parseNumber(m[1]!) }, m.index!);
+    if (m[2]) push({ kind: "duration", text: m[0], value: parseNumber(m[2]) }, m.index! + 1);
+  }
+  // Fail closed on spelled-out numbers next to money, percentages or time units ("four hundred dollars", "un año").
+  for (const m of text.matchAll(NUMBER_WORDS_BEFORE_UNIT())) {
+    push({ kind: "number_word", text: m[0], value: NaN }, m.index!);
   }
   return claims;
 }
@@ -70,6 +98,7 @@ export function extractClaims(text: string): Claim[] {
 export function verify(draft: string, allowed: Allowed): Verdict {
   const claims = extractClaims(draft);
   const unmatched = claims.filter((c) => {
+    if (c.kind === "number_word") return true; // cannot be checked: rewrite with digits
     if (c.kind === "percent") return !allowed.percents.includes(c.value);
     if (c.kind === "duration") return !allowed.durations.includes(c.value);
     return !allowed.amounts.some(

@@ -1,5 +1,5 @@
 import type { ChannelPort, InboundMessage, OutboundMessage, ParticipantId } from "@escala/channel";
-import { detectLang, MENU_WORDS, PRIVACY_WORDS, STOP_WORDS, T, type Lang } from "./i18n.ts";
+import { DELETE_WORDS, detectLang, MENU_WORDS, PRIVACY_WORDS, STOP_WORDS, T, type Lang } from "./i18n.ts";
 
 export type Stage = "new" | "onboarding" | "ready" | "stopped";
 export type ShareLevel = "trip" | "profile";
@@ -37,7 +37,15 @@ export interface ConversationDeps {
   /** Everything else: the trip agent. Optional while it is being built. */
   agent?(m: InboundMessage, person: Person): Promise<OutboundMessage[]>;
   onTripConfirmed?(person: Person): Promise<void>;
+  /** Erase everything kept about this person (memory, trips, case files). */
+  onDelete?(id: ParticipantId): Promise<void>;
 }
+
+const DELETED: Record<Lang, string> = {
+  en: "Done. I've deleted everything I kept about you. If you write again, we start from zero.",
+  es: "Listo. Borré todo lo que guardaba de ti. Si me vuelves a escribir, empezamos de cero.",
+  fr: "C'est fait. J'ai effacé tout ce que je gardais sur vous. Si vous m'écrivez de nouveau, on repart de zéro.",
+};
 
 const SESSION_GAP_MS = 24 * 60 * 60 * 1000;
 
@@ -58,10 +66,19 @@ export class Conversation {
   async handle(m: InboundMessage): Promise<void> {
     const text = m.kind === "text" ? m.text.trim() : "";
     const word = normalize(text);
-    const at = Date.parse(m.at);
+    const parsed = Date.parse(m.at);
+    const at = Number.isFinite(parsed) ? parsed : Date.now();
     let p = this.people.get(m.from);
+    const tokens = new Set(word.split(/[^\p{L}'-]+/u).filter(Boolean));
 
-    if (STOP_WORDS.includes(word)) {
+    if (DELETE_WORDS.some((w) => (w.includes(" ") ? word.includes(w) : tokens.has(w)))) {
+      const lang = p?.lang ?? detectLang(text);
+      this.people.delete(m.from);
+      await this.deps.onDelete?.(m.from);
+      return void (await this.deps.channel.send(m.from, { kind: "text", text: DELETED[lang] }));
+    }
+
+    if (STOP_WORDS.includes(word) || (words(text).length <= 3 && STOP_WORDS.some((w) => tokens.has(w)))) {
       p ??= this.newPerson(m.from, detectLang(text));
       p.stage = "stopped";
       p.awaiting = null;
@@ -156,7 +173,7 @@ export class Conversation {
 
   /** Images, documents and texts with something that looks like a flight number may carry a trip. */
   private mayHoldTrip(m: InboundMessage) {
-    return m.kind === "image" || m.kind === "document" || (m.kind === "text" && /\b[A-Z0-9]{2}\s?\d{1,4}\b/.test(m.text));
+    return m.kind === "image" || m.kind === "document" || (m.kind === "text" && /\b[a-z][a-z0-9]\s?\d{2,4}\b/i.test(m.text) && /\d{2,4}/.test(m.text));
   }
 
   private mainMenu(p: Person) {
@@ -188,7 +205,7 @@ export function keywordIntent(text: string, lang: Lang): Intent {
 }
 
 function normalize(s: string) {
-  return s.toLowerCase().replace(/[¡!¿?.]/g, " ").replace(/\s+/g, " ").trim();
+  return s.toLowerCase().replace(/[¡!¿?.,;:]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function words(s: string) {

@@ -41,7 +41,7 @@ export function detect(
   }
 
   const belt = curr.arrival.baggageClaim;
-  if (belt && belt !== prev?.arrival.baggageClaim) events.push({ kind: "baggage_claim", flightId: id, at, inference: false, belt });
+  if (belt && prev && belt !== prev.arrival.baggageClaim) events.push({ kind: "baggage_claim", flightId: id, at, inference: false, belt });
 
   const inboundEvent = inboundLate(curr, inbound.curr, minTurn, at);
   const prevInbound = prev ? inboundLate(prev, inbound.prev, minTurn, at) : undefined;
@@ -73,7 +73,7 @@ function inboundLate(
   if (!inboundArrival || !scheduledOut || inbound.cancelled) return undefined;
   const readyAt = Date.parse(inboundArrival) + minTurn * 60_000;
   const delay = Math.round((readyAt - Date.parse(scheduledOut)) / 60_000);
-  if (delay <= 0) return undefined;
+  if (!Number.isFinite(delay) || delay <= 0) return undefined;
   return {
     kind: "inbound_late",
     flightId: curr.flightId,

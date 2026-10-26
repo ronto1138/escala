@@ -86,11 +86,12 @@ export function factsFor(trip: Trip, flight: string): TripFacts {
   const last = j.at(-1)!;
   const country = (iata: string) => AIRPORTS[iata]?.country;
   const airline = AIRLINES[norm(leg.flight).slice(0, 2)];
-  const countries = new Set(j.flatMap((l) => [country(l.from), country(l.to)]));
-  const facts: TripFacts = {
-    as_of: leg.date,
-    itinerary_type: countries.size > 1 ? "international" : "domestic",
-  };
+  const all = j.flatMap((l) => [country(l.from), country(l.to)]);
+  const countries = new Set(all.filter(Boolean));
+  const facts: TripFacts = { as_of: leg.date };
+  // An unknown airport makes the itinerary type unknown, never a guess.
+  if (all.every(Boolean)) facts.itinerary_type = countries.size > 1 ? "international" : "domestic";
+  else if (countries.size > 1) facts.itinerary_type = "international";
   const set = (k: string, v: string | number | boolean | undefined) => {
     if (v !== undefined) facts[k] = v;
   };

@@ -123,8 +123,14 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
       if (!calls.length) return finalize(outputText(r), p, instructions, input, allowed);
       input.push(...(r.output ?? []));
       for (const c of calls) {
-        const args = JSON.parse(c.arguments || "{}");
-        const result = runTool(c.name, args, p, trip, allowed);
+        let result: unknown;
+        let args: any = {};
+        try {
+          args = JSON.parse(c.arguments || "{}");
+          result = runTool(c.name, args, p, trip, allowed);
+        } catch (err) {
+          result = { error: `tool failed: ${String(err).slice(0, 120)}` };
+        }
         trace({ kind: "tool", name: c.name, args, result });
         input.push({ type: "function_call_output", call_id: c.call_id, output: JSON.stringify(result) });
       }
@@ -188,7 +194,8 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
       for (const k of ["disruption", "arrival_delay_h", "cause_category", "notice_days", "passenger_declined_alternative"] as const) {
         const v = args[k];
         if (v === null || v === undefined || v === "null" || v === "") continue; // models sometimes write null as text
-        (facts as Record<string, string | number | boolean | undefined>)[k] = v;
+        const numeric = (k === "arrival_delay_h" || k === "notice_days") && typeof v === "string" && /^\d+(\.\d+)?$/.test(v);
+        (facts as Record<string, string | number | boolean | undefined>)[k] = numeric ? Number(v) : v;
       }
       // A delay seen in the flight data on the day of travel was notified 0 days before departure: a fact, not a question.
       if (facts.notice_days === undefined && facts.disruption === "delay") {
@@ -235,7 +242,14 @@ function cite(e: RightEntry, lang: Lang, amount?: Record<string, number>) {
 /** ISO UTC time -> "YYYY-MM-DD HH:MM" in the airport's time zone. */
 function local(iso: string | null, tz: string): string | null {
   if (!iso) return null;
-  const f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const opts = { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" } as const;
+  let f: Intl.DateTimeFormat;
+  try {
+    f = new Intl.DateTimeFormat("en-CA", { ...opts, timeZone: tz });
+  } catch {
+    f = new Intl.DateTimeFormat("en-CA", { ...opts, timeZone: "UTC" }); // unknown zone: say UTC rather than crash
+    return `${f.format(new Date(iso)).replace(",", "")} UTC`;
+  }
   return f.format(new Date(iso)).replace(",", "");
 }
 

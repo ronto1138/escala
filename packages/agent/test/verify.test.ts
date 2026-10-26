@@ -48,3 +48,36 @@ describe("the demo moment: the model offers 600 euros", () => {
     expect(verify("You have 48 hours to claim.", allowed).ok).toBe(false);
   });
 });
+
+describe("Muse Code audit (Oct 26): verifier bypasses that must stay closed", () => {
+  const allowed = { amounts: [{ currency: "CAD", value: 400 }], percents: [], durations: [3, 6, 9, 14, 30] };
+
+  it("C1: spelled-out amounts and durations fail closed", () => {
+    expect(verify("You are owed four hundred dollars.", { amounts: [], percents: [], durations: [] }).ok).toBe(false);
+    expect(verify("Te tocan cuatrocientos dólares canadienses.", allowed).ok).toBe(false);
+    expect(verify("Tienes un año para reclamar.", allowed).ok).toBe(false);
+  });
+
+  it("C1: ordinary words like 'un' or 'una' do not trip it", () => {
+    expect(verify("Es un vuelo de 3 horas y una conexión corta.", allowed).ok).toBe(true);
+  });
+
+  it("C2: both ends of a range are checked", () => {
+    expect(verify("You get CAD 400-600.", allowed).ok).toBe(false);
+    expect(verify("Entre 400 y 600 CAD.", allowed).ok).toBe(false);
+  });
+
+  it("C3: 'US dollars' is read as an amount", () => {
+    expect(verify("That's 400 US dollars.", allowed).ok).toBe(false);
+  });
+
+  it("C4: minutes, months and years are checked", () => {
+    expect(verify("It's 100 minutes late.", allowed).ok).toBe(false);
+    expect(verify("Claim within 2 years.", allowed).ok).toBe(false);
+  });
+
+  it("C5: more than one space or a line break does not hide a figure", () => {
+    expect(verify("CAD  600", allowed).ok).toBe(false);
+    expect(verify("600\nCAD", allowed).ok).toBe(false);
+  });
+});

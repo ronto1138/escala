@@ -31,6 +31,11 @@ export function validateEntries(entries: RightEntry[]): string[] {
     }
     for (const lang of ["en", "es", "fr"] as const) if (!e.summary?.[lang]) problems.push(`${where}: missing summary.${lang}`);
     if (e.source_url && !/^https:\/\//.test(e.source_url)) problems.push(`${where}: source_url must be https`);
+    const empty = (c: unknown): boolean =>
+      !!c && typeof c === "object" &&
+      ((Array.isArray((c as any).all) && ((c as any).all.length === 0 || (c as any).all.some(empty))) ||
+        (Array.isArray((c as any).any) && ((c as any).any.length === 0 || (c as any).any.some(empty))));
+    if (empty(e.applies_when)) problems.push(`${where}: empty all/any in applies_when (would be vacuously true or false)`);
 
     if (e.status === "VERIFICADO") {
       const kinds = new Set((e.tests ?? []).map((t) => t.expect));
