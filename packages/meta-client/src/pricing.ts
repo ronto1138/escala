@@ -13,12 +13,18 @@ export interface ImagePrice {
   perImage: number;
 }
 
+export interface AudioPrice {
+  kind: "audio";
+  perHour: number;
+}
+
 export const MODELS = {
   "muse-spark-1.3": { kind: "tokens", inputPerM: 1.25, cachedInputPerM: 0.15, outputPerM: 4.25 },
   "muse-spark-1.2": { kind: "tokens", inputPerM: 1.25, cachedInputPerM: 0.15, outputPerM: 4.25 },
   "muse-wonder-1.0": { kind: "tokens", inputPerM: 4.0, cachedInputPerM: 0.2, outputPerM: 20.0 },
   "sam-3.1": { kind: "images", perImage: 2.5 / 1000 },
-} as const satisfies Record<string, TokenPrice | ImagePrice>;
+  "muse-voice-transcribe-1.0": { kind: "audio", perHour: 0.18 },
+} as const satisfies Record<string, TokenPrice | ImagePrice | AudioPrice>;
 
 export type ModelId = keyof typeof MODELS;
 
@@ -31,12 +37,15 @@ export interface Usage {
   cachedTokens: number;
   outputTokens: number;
   images: number;
+  /** Seconds of audio, for speech-to-text. */
+  audioSeconds?: number;
 }
 
 /** Cost in USD. Cached tokens are billed at the cached rate and are not billed again as regular input. */
 export function costUsd(model: ModelId, u: Usage): number {
   const p = MODELS[model];
   if (p.kind === "images") return round6(u.images * p.perImage);
+  if (p.kind === "audio") return round6(((u.audioSeconds ?? 0) / 3600) * p.perHour);
   const fresh = Math.max(0, u.inputTokens - u.cachedTokens);
   return round6((fresh * p.inputPerM + u.cachedTokens * p.cachedInputPerM + u.outputTokens * p.outputPerM) / 1e6);
 }

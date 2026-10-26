@@ -1,6 +1,8 @@
 # Escala on WhatsApp. Node 22 runs the TypeScript sources directly (type stripping); no build step.
 FROM node:22.15.0-slim
 ENV NODE_ENV=production
+# ffmpeg turns WhatsApp voice notes (OGG/Opus) into the WAV that Muse Voice Transcribe accepts.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages ./packages

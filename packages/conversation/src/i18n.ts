@@ -45,6 +45,9 @@ type Texts = {
   confirmed: string;
   fixPrompt: string;
   notReadable: string;
+  /** What Escala understood from a voice note, so a misheard word can be corrected at once. */
+  heard: (text: string) => string;
+  notHeard: string;
   /** Full privacy note, only when asked. */
   privacy: string;
   menuText: string;
@@ -70,6 +73,8 @@ export const T: Record<Lang, Texts> = {
     confirmed: "Perfect. I'm keeping an eye on your flights and I'll tell you the moment something changes. Ask me anything about your trip.",
     fixPrompt: "No problem. What should I fix?",
     notReadable: "I couldn't find a trip there. Could you send me the confirmation email, a screenshot, or the flight numbers and dates?",
+    heard: (t) => `🎙️ I heard: "${t}"`,
+    notHeard: "I couldn't make out that voice note. Could you say it again, or write it?",
     privacy:
       "Your messages travel encrypted. To help you, Escala and the Meta service that manages this chat process them. " +
       "What I remember about you is stored encrypted, isn't used to train models or for ads, and no one on our team reads it. " +
@@ -120,6 +125,8 @@ export const T: Record<Lang, Texts> = {
     confirmed: "Perfecto. Ya estoy al pendiente de tus vuelos y te aviso en cuanto algo cambie. Pregúntame lo que quieras de tu viaje.",
     fixPrompt: "Claro. ¿Qué corrijo?",
     notReadable: "No encontré un viaje ahí. ¿Me mandas el correo de confirmación, una captura o los números de vuelo y las fechas?",
+    heard: (t) => `🎙️ Entendí: «${t}»`,
+    notHeard: "No alcancé a entender la nota de voz. ¿Me la repites o me la escribes?",
     privacy:
       "Tus mensajes viajan cifrados. Para ayudarte, Escala y el servicio de Meta que gestiona este chat los procesan. " +
       "Lo que recuerdo de ti se guarda cifrado, no se usa para entrenar modelos ni para publicidad, y nadie del equipo lo lee. " +
@@ -170,6 +177,8 @@ export const T: Record<Lang, Texts> = {
     confirmed: "Parfait. Je surveille vos vols et je vous préviens dès que quelque chose change. Demandez-moi ce que vous voulez sur votre voyage.",
     fixPrompt: "Bien sûr. Qu'est-ce que je corrige ?",
     notReadable: "Je n'ai pas trouvé de voyage. Pouvez-vous m'envoyer le courriel de confirmation, une capture ou les numéros de vol et les dates ?",
+    heard: (t) => `🎙️ J'ai compris : « ${t} »`,
+    notHeard: "Je n'ai pas bien compris le message vocal. Pouvez-vous le répéter ou l'écrire ?",
     privacy:
       "Vos messages voyagent chiffrés. Pour vous aider, Escala et le service de Meta qui gère cette conversation les traitent. " +
       "Ce dont je me souviens sur vous est stocké chiffré, ne sert ni à entraîner des modèles ni à la publicité, et personne dans notre équipe ne le lit. " +

@@ -70,3 +70,22 @@ describe("meta-client", () => {
     expect(costUsd("sam-3.1", { inputTokens: 0, cachedTokens: 0, outputTokens: 0, images: 4 })).toBeCloseTo(0.01, 9);
   });
 });
+
+describe("speech to text", () => {
+  it("sends multipart WAV with keywords, logs the audio cost and returns the transcript", async () => {
+    const calls: Array<{ url: string; init: any }> = [];
+    const fetchFake = (async (url: string, init: any) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ transcript: " Mi vuelo a Montreal ", audioDurationMs: 7200 }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const usage = memorySink();
+    const client = createMetaClient({ apiKey: "k", usage, fetch: fetchFake });
+    const r = await client.transcribe(new Uint8Array([1, 2, 3]), { keywords: ["Montreal"] }, { caller: "voice/test" });
+    expect(r).toEqual({ text: "Mi vuelo a Montreal", seconds: 8 });
+    expect(calls[0]!.url).toBe("https://api.meta.ai/v1/asr/transcribe");
+    const req = JSON.parse(await ((calls[0]!.init.body as FormData).get("request") as Blob).text());
+    expect(req).toMatchObject({ model: "muse-voice-transcribe-1.0", audioEncoding: "WAV", keywords: ["Montreal"] });
+    expect(usage.lines[0]).toMatchObject({ model: "muse-voice-transcribe-1.0", ok: true, cost_usd: costUsd("muse-voice-transcribe-1.0", { inputTokens: 0, cachedTokens: 0, outputTokens: 0, images: 0, audioSeconds: 8 }) });
+    expect(usage.lines[0]!.cost_usd).toBeCloseTo((8 / 3600) * 0.18, 6);
+  });
+});

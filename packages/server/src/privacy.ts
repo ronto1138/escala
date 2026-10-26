@@ -43,6 +43,7 @@ your rights as a passenger, and plans on the way. It is in an early test phase.<
 <ul>
   <li>What Escala remembers is stored encrypted (AES-256-GCM, with a separate key derived for each person). Your phone number is not stored in clear next to it.</li>
   <li>The last few turns of a conversation are kept in the server's memory for up to 24 hours, so a reply can build on what you just said.</li>
+  <li>Voice notes are converted to text (Muse Voice Transcribe) and then handled like a written message; the audio itself is not kept.</li>
   <li>Server logs record only that a message arrived and its type, with a one-way tag instead of your number; never the content.</li>
 </ul>
 

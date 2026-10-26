@@ -141,7 +141,68 @@ export function createMetaClient(opts: MetaClientOptions) {
     });
   }
 
-  return { responses };
+  /**
+   * Speech to text with Muse Voice Transcribe. Takes mono 16-bit WAV (16 or 24 kHz). `keywords` bias recognition
+   * toward words the person is likely to say (the trip's cities and flight numbers), which fixes most misheard names.
+   */
+  async function transcribe(wav: Uint8Array, o: { keywords?: string[] }, call: CallOptions): Promise<{ text: string; seconds: number }> {
+    const model = "muse-voice-transcribe-1.0" as const;
+    const started = Date.now();
+    let lastError = "";
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const form = new FormData();
+      const request = { model, audioEncoding: "WAV", ...(o.keywords?.length ? { keywords: o.keywords.slice(0, 50) } : {}) };
+      form.append("request", new Blob([JSON.stringify(request)], { type: "application/json" }));
+      const bytes = new Uint8Array(wav.length); // a copy backed by a plain ArrayBuffer, as Blob requires
+      bytes.set(wav);
+      form.append("audio", new Blob([bytes], { type: "audio/wav" }), "note.wav");
+      let res: Response;
+      try {
+        res = await doFetch(`${baseUrl}/asr/transcribe`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${opts.apiKey}` },
+          body: form,
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (err) {
+        lastError = String(err);
+        if (attempt < maxRetries) {
+          await sleep(backoff(attempt));
+          continue;
+        }
+        break;
+      }
+      if (res.ok) {
+        const json: any = await res.json();
+        const seconds = Math.ceil(num(json?.audioDurationMs) / 1000);
+        await opts.usage.write({
+          id: newUsageId(),
+          ts: new Date().toISOString(),
+          caller: call.caller,
+          model,
+          input_tokens: 0,
+          cached_tokens: 0,
+          output_tokens: 0,
+          images: 0,
+          latency_ms: Date.now() - started,
+          cost_usd: costUsd(model, { inputTokens: 0, cachedTokens: 0, outputTokens: 0, images: 0, audioSeconds: seconds }),
+          ok: true,
+        });
+        return { text: String(json?.transcript ?? "").trim(), seconds };
+      }
+      const text = await res.text();
+      lastError = `HTTP ${res.status}: ${text.slice(0, 300)}`;
+      if (RETRYABLE.has(res.status) && attempt < maxRetries) {
+        await sleep(retryAfterMs(res.headers.get("retry-after")) ?? backoff(attempt));
+        continue;
+      }
+      break;
+    }
+    await logFailure(model, call, started, lastError);
+    throw new MetaApiError(`Meta API request failed: ${lastError}`, 0, "");
+  }
+
+  return { responses, transcribe };
 }
 
 export type MetaClient = ReturnType<typeof createMetaClient>;

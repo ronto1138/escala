@@ -182,3 +182,43 @@ describe("Muse Code audit (Oct 26): privacy promises are kept", () => {
     expect(detectLang("travel alone please")).toBe("en");
   });
 });
+
+describe("voice notes become text", () => {
+  const voice = { kind: "audio" as const, mediaId: "v1", mimeType: "audio/ogg", voice: true };
+
+  it("says what it understood, then handles it like a written message", async () => {
+    const sim = new SimChannel();
+    const seen: string[] = [];
+    const conv = new Conversation({
+      channel: sim,
+      extractItinerary: async () => null,
+      transcribe: async () => "¿Cómo va mi vuelo?",
+      agent: async (m) => (m.kind === "text" ? (seen.push(m.text), [{ kind: "text", text: "ok" }]) : []),
+    });
+    await sim.userSends("21", { kind: "text", text: "Hola" });
+    await sim.userSends("21", { kind: "text", text: "solo este viaje" });
+    await sim.userSends("21", voice);
+    const texts = sim.transcript.filter((e) => e.direction === "out").map((e) => (e.message as { text: string }).text);
+    expect(texts).toContain("🎙️ Entendí: «¿Cómo va mi vuelo?»");
+    expect(seen).toEqual(["¿Cómo va mi vuelo?"]);
+    expect(conv.people.get("21")?.lang).toBe("es");
+  });
+
+  it("'delete everything' said aloud erases the person", async () => {
+    const sim = new SimChannel();
+    const erased: string[] = [];
+    const conv = new Conversation({ channel: sim, extractItinerary: async () => null, transcribe: async () => "Delete everything", onDelete: async (id) => void erased.push(id) });
+    await sim.userSends("22", { kind: "text", text: "hi" });
+    await sim.userSends("22", voice);
+    expect(erased).toEqual(["22"]);
+    expect(conv.people.has("22")).toBe(false);
+  });
+
+  it("asks again when nothing could be understood", async () => {
+    const sim = new SimChannel();
+    new Conversation({ channel: sim, extractItinerary: async () => null, transcribe: async () => null });
+    await sim.userSends("23", { kind: "text", text: "hi" });
+    await sim.userSends("23", voice);
+    expect((sim.transcript.at(-1)!.message as { text: string }).text).toBe(T.en.notHeard);
+  });
+});

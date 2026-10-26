@@ -39,6 +39,8 @@ export interface ConversationDeps {
   onTripConfirmed?(person: Person): Promise<void>;
   /** Erase everything kept about this person (memory, trips, case files). */
   onDelete?(id: ParticipantId): Promise<void>;
+  /** Voice note to text (Muse Voice Transcribe). Null when nothing could be understood. Without it, voice goes to the agent. */
+  transcribe?(m: Extract<InboundMessage, { mediaId: string }>, person: Person | undefined): Promise<string | null>;
   /** The person chose how much to remember: "trip" (default) or "profile". */
   onShareChanged?(person: Person): Promise<void>;
 }
@@ -65,7 +67,18 @@ export class Conversation {
     deps.channel.onInbound((m) => this.handle(m));
   }
 
-  async handle(m: InboundMessage): Promise<void> {
+  async handle(incoming: InboundMessage): Promise<void> {
+    let m = incoming;
+    // A voice note becomes the words it carries, and from here on it is handled exactly like text: "delete
+    // everything" or "stop" said aloud work too. Escala repeats what it understood, so a misheard word shows at once.
+    if (m.kind === "audio" && this.deps.transcribe) {
+      const known = this.people.get(m.from);
+      const said = (await this.deps.transcribe(m, known))?.trim();
+      const lang = known?.langFromText ? known.lang : said ? detectLang(said) : (known?.lang ?? "en");
+      if (!said) return void (await this.deps.channel.send(m.from, { kind: "text", text: T[lang].notHeard }));
+      await this.deps.channel.send(m.from, { kind: "text", text: T[lang].heard(said.length > 300 ? `${said.slice(0, 300)}…` : said) });
+      m = { id: m.id, from: m.from, at: m.at, kind: "text", text: said };
+    }
     const text = m.kind === "text" ? m.text.trim() : "";
     const word = normalize(text);
     const parsed = Date.parse(m.at);

@@ -5,13 +5,14 @@ import { mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createEscalaAgent } from "@escala/agent";
+import { AIRPORTS, createEscalaAgent } from "@escala/agent";
 import type { InboundMessage } from "@escala/channel";
 import { Conversation } from "@escala/conversation";
 import { loadScenario, ReplayFeed } from "@escala/feeds";
 import { MemoryCrypto, MemoryStore } from "@escala/memory";
 import { createMetaClient, fileSink, type UsageLine } from "@escala/meta-client";
 import { loadEntries } from "@escala/rights";
+import { toWav, tripKeywords } from "./audio.ts";
 import { CloudApiChannel } from "./cloud.ts";
 import { createWebhookHandler, tag } from "./webhook.ts";
 
@@ -47,6 +48,18 @@ new Conversation({
   channel,
   extractItinerary: escala.extractItinerary,
   agent: escala.agent!,
+  // Voice notes: download, convert in memory, transcribe with the trip's places as hints. Audio is never stored.
+  transcribe: async (m, p) => {
+    try {
+      const dataUrl = await channel.dataUrl(m.mediaId, m.mimeType);
+      const wav = await toWav(Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"));
+      const keywords = tripKeywords(p?.trip, (code) => AIRPORTS[code]?.city);
+      return (await client.transcribe(wav, { keywords }, { caller: "voice/transcribe" })).text || null;
+    } catch (err) {
+      log({ event: "error", why: "voice note", from: tag(m.from), error: String(err).slice(0, 200) });
+      return null;
+    }
+  },
   onShareChanged: async (p) => void memory.updateSettings(p.id, { share: p.share }),
   onDelete: async (id) => {
     memory.forget(id, "all");
