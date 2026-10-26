@@ -1,9 +1,10 @@
-# PortulAIn
+# Escala
 
-**Your trip companion on WhatsApp, and only for your trip.** Send your itinerary once, any way you have it.
-PortulAIn watches your flights, tells you and the people you choose when something changes, explains what
-you are owed with the rule in hand (and says so when it does not know), and remembers what it learns about
-how you travel, if you let it.
+**A companion for your whole trip, on WhatsApp, and only for your trip.** Send your plans once, any way you
+have them: flights, stays, trains, bookings. Escala keeps track of all of it, tells you and the people you
+choose when something changes, answers anything about your trip in English, Spanish or French, and learns
+how you like to travel, if you let it. When an answer involves rules or money, it comes with the source, and
+when Escala does not know, it says so.
 
 Built for the **Meta Global AI Developer Hackathon** (Oct 26 – Nov 4, 2026), theme *Build for Your World*,
 with Meta's models through the Meta Model API.

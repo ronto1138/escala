@@ -1,8 +1,8 @@
 {
-  "name": "portulain",
+  "name": "escala",
   "private": true,
   "version": "0.1.0",
-  "description": "PortulAIn: trip companion on WhatsApp, built with Meta's models",
+  "description": "Escala: a companion for your whole trip on WhatsApp, built with Meta's models",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {

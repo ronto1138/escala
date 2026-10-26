@@ -1,7 +1,9 @@
 {
-  "name": "@portulain/meta-client",
+  "name": "@escala/meta-client",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "exports": { ".": "./src/index.ts" }
+  "exports": {
+    ".": "./src/index.ts"
+  }
 }
