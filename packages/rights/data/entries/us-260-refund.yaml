@@ -1,0 +1,42 @@
+id: us-260-refund
+jurisdiction: US
+instrument: 14 CFR Part 260 (Refunds for airline fares and ancillary service fees)
+article: "260.2, 260.6"
+status: VERIFICADO
+source_url: https://www.ecfr.gov/current/title-14/chapter-II/subchapter-A/part-260
+verified_on: 2026-10-21
+summary:
+  en: "Automatic refund of the fare, taxes and unused extras if the flight is cancelled or significantly changed (3 hours on a domestic itinerary, 6 hours on an international one) and you do not accept the alternative."
+  es: "Reembolso automático de la tarifa, los impuestos y los extras no usados si el vuelo se cancela o cambia de forma significativa (3 horas en un itinerario nacional, 6 en uno internacional) y no aceptas la alternativa."
+  fr: "Remboursement automatique du billet, des taxes et des services non utilisés si le vol est annulé ou modifié de façon importante (3 heures sur un itinéraire intérieur, 6 sur un itinéraire international) et que vous refusez la solution proposée."
+applies_when:
+  all:
+    - any:
+        - { origin_country: US }
+        - { destination_country: US }
+    - any:
+        - { disruption: cancellation }
+        - all: [{ itinerary_type: domestic }, { arrival_delay_h: { gte: 3 } }]
+        - all: [{ itinerary_type: international }, { arrival_delay_h: { gte: 6 } }]
+    - { passenger_declined_alternative: true }
+deadlines:
+  refund_business_days_card: 7
+  refund_calendar_days_other: 20
+ask_if_unknown:
+  passenger_declined_alternative:
+    en: "Do you want to take the alternative the airline offered, or would you rather not fly it?"
+    es: "¿Quieres tomar la alternativa que te ofreció la aerolínea o prefieres no volar en ella?"
+    fr: "Voulez-vous prendre la solution proposée par la compagnie, ou préférez-vous ne pas voyager ainsi ?"
+not_covered:
+  - "Whether the 6-hour threshold applies to the domestic segment of an international itinerary: to be confirmed against the regulation text."
+  - "DOT enforcement discretion for flights that are merely renumbered runs until 2027-07-07."
+tests:
+  - name: demo trip, 3.5 h on an international itinerary
+    facts: { origin_country: US, destination_country: US, itinerary_type: international, disruption: delay, arrival_delay_h: 3.5, passenger_declined_alternative: true }
+    expect: not_applies
+  - name: domestic, 4 h, declined
+    facts: { origin_country: US, destination_country: US, itinerary_type: domestic, disruption: delay, arrival_delay_h: 4, passenger_declined_alternative: true }
+    expect: applies
+  - name: cancellation, decision pending
+    facts: { origin_country: US, destination_country: CA, itinerary_type: international, disruption: cancellation }
+    expect: may_apply

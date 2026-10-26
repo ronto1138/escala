@@ -7,7 +7,7 @@
 usage.jsonl
 *.db
 *.sqlite
-data/
+/data/
 # Dependencies and builds
 node_modules/
 dist/

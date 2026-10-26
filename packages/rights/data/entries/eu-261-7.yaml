@@ -1,0 +1,48 @@
+id: eu-261-7
+jurisdiction: EU
+instrument: Regulation (EC) No 261/2004, with CJEU C-402/07 Sturgeon and C-581/10 Nelson
+article: "3, 5, 7"
+status: VERIFICADO
+source_url: https://www.boe.es/doue/2004/046/L00001-00007.pdf
+verified_on: 2026-10-21
+valid_to: 2027-10-22
+summary:
+  en: "Compensation of 250, 400 or 600 euros, by distance, if you arrive 3 hours or more late or your flight is cancelled, unless the airline proves extraordinary circumstances. It covers flights leaving the EU, and flights into the EU on an EU airline."
+  es: "Compensación de 250, 400 o 600 euros, según la distancia, si llegas 3 horas o más tarde o te cancelan, salvo que la aerolínea pruebe circunstancias extraordinarias. Cubre vuelos que salen de la UE y vuelos que llegan a la UE con aerolínea de la UE."
+  fr: "Indemnité de 250, 400 ou 600 euros selon la distance si vous arrivez avec 3 heures de retard ou plus, ou si le vol est annulé, sauf si la compagnie prouve des circonstances extraordinaires. Elle couvre les vols au départ de l'UE et les vols vers l'UE opérés par une compagnie de l'UE."
+applies_when:
+  all:
+    - any:
+        - { origin_in_eu261_area: true }
+        - all: [{ destination_in_eu261_area: true }, { carrier_is_eu261_carrier: true }]
+    - any:
+        - { disruption: cancellation }
+        - all: [{ disruption: delay }, { arrival_delay_h: { gte: 3 } }]
+    - { extraordinary_circumstances: false }
+amount_rules:
+  - { when: { distance_km: { lte: 1500 } }, amount: { EUR: 250 } }
+  - { when: { all: [{ distance_km: { gt: 1500 } }, { any: [{ intra_eu261: true }, { distance_km: { lte: 3500 } }] }] }, amount: { EUR: 400 } }
+  - { when: { all: [{ distance_km: { gt: 3500 } }, { intra_eu261: false }] }, amount: { EUR: 600 } }
+ask_if_unknown:
+  extraordinary_circumstances:
+    en: "Did the airline give a reason, such as weather, an air traffic control strike or a security issue?"
+    es: "¿La aerolínea dio un motivo, como el clima, una huelga de control aéreo o un tema de seguridad?"
+    fr: "La compagnie a-t-elle donné une raison, comme la météo, une grève du contrôle aérien ou un problème de sûreté ?"
+not_covered:
+  - "Cancellations announced 14 days or more ahead, and rerouting exceptions of art. 5(1)(c), are not modelled here yet."
+  - "The 50% reduction of art. 7(2) when rerouted is not modelled here yet."
+  - "Regulation (EU) 2026/2202 replaces parts of this from 2027-10-23; it is a separate entry."
+tests:
+  - name: demo trip, never touches the EU (the "600 euros" trap)
+    facts: { as_of: 2026-11-02, origin_in_eu261_area: false, destination_in_eu261_area: false, carrier_is_eu261_carrier: false, disruption: delay, arrival_delay_h: 3.5, extraordinary_circumstances: false, distance_km: 2400 }
+    expect: not_applies
+  - name: Madrid to Mexico City, 4 h late, no extraordinary circumstances
+    facts: { as_of: 2026-11-02, origin_in_eu261_area: true, disruption: delay, arrival_delay_h: 4, extraordinary_circumstances: false, distance_km: 9070, intra_eu261: false }
+    expect: applies
+    amount: { EUR: 600 }
+  - name: reason not known yet
+    facts: { as_of: 2026-11-02, origin_in_eu261_area: true, disruption: cancellation, distance_km: 1200 }
+    expect: may_apply
+  - name: after the reform applies
+    facts: { as_of: 2027-11-01, origin_in_eu261_area: true, disruption: delay, arrival_delay_h: 4, extraordinary_circumstances: false, distance_km: 1200 }
+    expect: not_applies
