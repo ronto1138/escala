@@ -1,0 +1,30 @@
+id: us-dot-renumbering
+jurisdiction: US
+instrument: US DOT enforcement discretion on Parts 260 and 399 (FR 2026-13675, 91 FR 41556)
+article: "enforcement notice of 2026-07-07"
+status: VERIFICADO
+source_url: https://www.federalregister.gov/d/2026-13675
+verified_on: 2026-10-21
+valid_to: 2027-07-07
+summary:
+  en: "Until 7 July 2027 the US DOT will not penalize an airline that treats a flight that was only renumbered, with no significant change in time or route, as not cancelled. A new flight number alone does not trigger the automatic refund; a change of 3 hours or more on a domestic trip still would."
+  es: "Hasta el 7 de julio de 2027 el DOT de EE. UU. no sanciona a la aerolínea que trata como no cancelado un vuelo al que solo le cambiaron el número, sin cambio importante de horario o ruta. Un número de vuelo nuevo por sí solo no da derecho al reembolso automático; un cambio de 3 horas o más en un viaje nacional sí lo daría."
+  fr: "Jusqu'au 7 juillet 2027, le DOT américain ne sanctionne pas une compagnie qui traite comme non annulé un vol simplement renuméroté, sans changement important d'horaire ou d'itinéraire. Un nouveau numéro de vol ne donne pas droit à lui seul au remboursement automatique ; un changement de 3 heures ou plus sur un trajet intérieur, oui."
+applies_when:
+  all:
+    - any:
+        - { origin_country: US }
+        - { destination_country: US }
+    - { disruption: renumbered }
+deadlines:
+  significant_change_domestic_h: 3
+tests:
+  - name: flight renumbered, same times
+    facts: { as_of: 2026-11-20, origin_country: US, destination_country: US, disruption: renumbered }
+    expect: applies
+  - name: US trip, change not described
+    facts: { as_of: 2026-11-20, origin_country: US }
+    expect: may_apply
+  - name: after the discretion ends
+    facts: { as_of: 2027-08-01, origin_country: US, destination_country: US, disruption: renumbered }
+    expect: not_applies

@@ -1,0 +1,32 @@
+id: us-259-tarmac
+jurisdiction: US
+instrument: 14 CFR Part 259 (Enhanced protections for airline passengers)
+article: "259.4"
+status: VERIFICADO
+source_url: https://www.ecfr.gov/current/title-14/chapter-II/subchapter-A/part-259
+verified_on: 2026-10-21
+summary:
+  en: "During a tarmac delay at a US airport, the airline must give you the chance to get off before 3 hours on a domestic flight or 4 hours on an international one, unless safety, security or air traffic control prevent it; food and water by 2 hours; working toilets and medical help; and updates every 30 minutes."
+  es: "En una espera en pista en un aeropuerto de EE. UU., la aerolínea debe darte la oportunidad de bajar antes de 3 horas en un vuelo nacional o de 4 en uno internacional, salvo que lo impidan la seguridad o el control de tránsito aéreo; comida y agua a más tardar a las 2 horas; baños funcionando y atención médica; y avisos cada 30 minutos."
+  fr: "Lors d'une attente sur le tarmac dans un aéroport des États-Unis, la compagnie doit vous permettre de descendre avant 3 heures sur un vol intérieur ou 4 heures sur un vol international, sauf raison de sécurité, de sûreté ou de contrôle aérien ; de l'eau et de la nourriture au plus tard à 2 heures ; des toilettes en état et une assistance médicale ; et des nouvelles toutes les 30 minutes."
+applies_when:
+  all:
+    - any:
+        - { leg_origin_country: US }
+        - { destination_country: US }
+    - { disruption: tarmac }
+deadlines:
+  deplane_domestic_h: 3
+  deplane_international_h: 4
+  food_and_water_h: 2
+  updates_every_min: 30
+tests:
+  - name: waiting on the tarmac at JFK
+    facts: { leg_origin_country: US, destination_country: FR, disruption: tarmac }
+    expect: applies
+  - name: US airport, problem not told yet
+    facts: { leg_origin_country: US, destination_country: US }
+    expect: may_apply
+  - name: tarmac in Canada
+    facts: { leg_origin_country: CA, destination_country: CA, disruption: tarmac }
+    expect: not_applies

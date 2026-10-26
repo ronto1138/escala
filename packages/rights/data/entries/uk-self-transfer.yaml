@@ -1,0 +1,35 @@
+id: uk-self-transfer
+jurisdiction: UK
+instrument: UK Civil Aviation Authority guidance on delays and connections
+article: "CAA guidance (self-transfer)"
+status: VERIFICADO
+source_url: https://www.caa.co.uk/air-passengers/travel-problems-and-rights/flight-delays-and-cancellations/delays/
+verified_on: 2026-10-21
+summary:
+  en: "If you booked your flights separately (self-transfer), a missed connection gives you no right against the airline of the second flight: each booking counts on its own. With one booking, the delay is measured at your final destination."
+  es: "Si compraste los vuelos por separado (autotrasbordo), perder la conexión no te da derecho frente a la aerolínea del segundo vuelo: cada reserva cuenta por su lado. Con una sola reserva, el retraso se mide en tu destino final."
+  fr: "Si vous avez réservé vos vols séparément (correspondance autonome), une correspondance manquée ne vous donne aucun droit envers la compagnie du second vol : chaque réservation compte séparément. Avec une seule réservation, le retard se mesure à la destination finale."
+applies_when:
+  all:
+    - any:
+        - { origin_country: GB }
+        - { destination_country: GB }
+        - { final_destination_country: GB }
+    - { connection: true }
+    - { disruption: { in: [delay, cancellation] } }
+    - { single_booking: false }
+ask_if_unknown:
+  single_booking:
+    en: "Did you buy both flights in one booking, or separately?"
+    es: "¿Compraste los dos vuelos en una sola reserva o por separado?"
+    fr: "Avez-vous acheté les deux vols dans une seule réservation, ou séparément ?"
+tests:
+  - name: Paris to London to Toronto, separate bookings
+    facts: { connection: true, origin_country: FR, destination_country: GB, final_destination_country: CA, disruption: delay, single_booking: false }
+    expect: applies
+  - name: through London, booking not told
+    facts: { connection: true, origin_country: FR, destination_country: GB, final_destination_country: CA, disruption: delay }
+    expect: may_apply
+  - name: one booking
+    facts: { connection: true, origin_country: FR, destination_country: GB, final_destination_country: CA, disruption: delay, single_booking: true }
+    expect: not_applies

@@ -1,0 +1,33 @@
+id: us-254-baggage
+jurisdiction: US
+instrument: 14 CFR Part 254 (Domestic baggage liability)
+article: "254.4"
+status: VERIFICADO
+source_url: https://www.ecfr.gov/current/title-14/part-254
+verified_on: 2026-10-21
+summary:
+  en: "On US domestic flights the airline cannot limit what it pays for a lost, damaged or delayed bag to less than USD 4,700 per passenger. It pays the damage you can prove, up to that amount; this is a limit, not a fixed payment."
+  es: "En vuelos nacionales de EE. UU. la aerolínea no puede limitar lo que paga por una maleta perdida, dañada o retrasada a menos de 4,700 USD por pasajero. Paga el daño que puedas demostrar, hasta ese monto; es un tope, no un pago fijo."
+  fr: "Sur les vols intérieurs aux États-Unis, la compagnie ne peut pas limiter ce qu'elle paie pour un bagage perdu, endommagé ou retardé à moins de 4 700 USD par passager. Elle paie le dommage que vous pouvez prouver, jusqu'à ce montant : c'est un plafond, pas un paiement fixe."
+applies_when:
+  all:
+    - { itinerary_type: domestic }
+    - { origin_country: US }
+    - { disruption: { in: [bag_lost, bag_damaged, bag_delayed] } }
+    - { not: { mobility_device: true } }
+amount_rules:
+  - { when: { itinerary_type: domestic }, amount: { USD: 4700 } }
+not_covered:
+  - "Applies to flights with aircraft of more than 60 seats, or on the same ticket as one; smaller aircraft are not modelled."
+  - "Wheelchairs and mobility devices are not limited by this amount: see 14 CFR 382.131."
+tests:
+  - name: lost bag Denver to Boston
+    facts: { itinerary_type: domestic, origin_country: US, disruption: bag_lost, mobility_device: false }
+    expect: applies
+    amount: { USD: 4700 }
+  - name: domestic, problem not told yet
+    facts: { itinerary_type: domestic, origin_country: US, mobility_device: false }
+    expect: may_apply
+  - name: damaged wheelchair
+    facts: { itinerary_type: domestic, origin_country: US, disruption: bag_damaged, mobility_device: true }
+    expect: not_applies

@@ -1,0 +1,29 @@
+id: mx-profeco
+jurisdiction: MX
+instrument: Ley Federal de Protección al Consumidor; Profeco
+article: "105"
+status: VERIFICADO
+source_url: https://www.diputados.gob.mx/LeyesBiblio/pdf/LFPC.pdf
+verified_on: 2026-10-21
+summary:
+  en: "In Mexico, claim first at the airline's desk at the airport; if it is not solved, file a complaint with Profeco within 1 year, online at Concilianet or by phone at 55 5568 8722 or 800 468 8722. Keep boarding passes, receipts and the airline's messages."
+  es: "En México, reclama primero en el módulo de la aerolínea en el aeropuerto; si no se resuelve, presenta la queja ante Profeco dentro de 1 año, en línea en Concilianet o por teléfono al 55 5568 8722 o al 800 468 8722. Guarda pases de abordar, recibos y los mensajes de la aerolínea."
+  fr: "Au Mexique, réclamez d'abord au comptoir de la compagnie à l'aéroport ; si rien n'est réglé, déposez une plainte auprès de la Profeco dans un délai d'1 an, en ligne sur Concilianet ou par téléphone au 55 5568 8722 ou au 800 468 8722. Gardez cartes d'embarquement, reçus et messages de la compagnie."
+applies_when:
+  all:
+    - any:
+        - { origin_country: MX }
+        - { destination_country: MX }
+    - { disruption: { in: [delay, cancellation, denied_boarding, bag_delayed, bag_damaged, bag_lost] } }
+deadlines:
+  complaint_within_years: 1
+tests:
+  - name: delay in Mexico
+    facts: { origin_country: MX, destination_country: MX, disruption: delay }
+    expect: applies
+  - name: Mexico trip, problem not told
+    facts: { origin_country: MX }
+    expect: may_apply
+  - name: US only
+    facts: { origin_country: US, destination_country: US, disruption: delay }
+    expect: not_applies

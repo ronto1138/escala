@@ -1,0 +1,44 @@
+id: ca-appr-14-care
+jurisdiction: CA
+instrument: Air Passenger Protection Regulations (SOR/2019-150)
+article: "13, 14"
+status: VERIFICADO
+source_url: https://laws-lois.justice.gc.ca/eng/regulations/SOR-2019-150/FullText.html
+verified_on: 2026-10-21
+valid_from: 2019-12-15
+summary:
+  en: "If the delay or cancellation is within the airline's control (safety reasons included) and you were told less than 12 hours before departure, from 2 hours of waiting the airline must give you food and drink in reasonable amounts and a way to communicate, and a hotel with transport if you have to stay overnight. It must also tell you the reason, the compensation you may get and how to complain, with updates every 30 minutes."
+  es: "Si el retraso o la cancelación está bajo el control de la aerolínea (incluidas las razones de seguridad) y te avisaron con menos de 12 horas, a partir de 2 horas de espera la aerolínea debe darte comida y bebida razonables y un medio para comunicarte, y hotel con traslado si tienes que pasar la noche. También debe decirte el motivo, la compensación posible y cómo reclamar, con avisos cada 30 minutos."
+  fr: "Si le retard ou l'annulation dépend du transporteur (raisons de sécurité comprises) et que vous avez été avisé moins de 12 heures avant le départ, dès 2 heures d'attente la compagnie doit fournir nourriture et boissons en quantité raisonnable et un moyen de communiquer, et un hôtel avec transport s'il faut passer la nuit. Elle doit aussi vous donner le motif, l'indemnité possible et les recours, avec des nouvelles toutes les 30 minutes."
+applies_when:
+  all:
+    - any:
+        - { origin_country: CA }
+        - { destination_country: CA }
+        - { final_destination_country: CA }
+    - { cause_category: { in: [within_control, within_control_safety] } }
+    - { notice_days: { lt: 0.5 } }
+    - any:
+        - { disruption: cancellation }
+        - all: [{ disruption: delay }, { any: [{ departure_delay_h: { gte: 2 } }, { arrival_delay_h: { gte: 2 } }] }]
+deadlines:
+  care_from_h: 2
+  notice_under_h: 12
+  updates_every_min: 30
+ask_if_unknown:
+  cause_category:
+    en: "Did the airline tell you why the flight is late?"
+    es: "¿La aerolínea te dijo por qué se retrasó el vuelo?"
+    fr: "La compagnie vous a-t-elle dit pourquoi le vol est en retard ?"
+not_covered:
+  - "The wait is measured from the original departure; when only the arrival delay is known, it is used as a stand-in."
+tests:
+  - name: Austin to Montreal, 3.5 h late, crew, same day
+    facts: { as_of: 2026-11-02, origin_country: US, final_destination_country: CA, disruption: delay, cause_category: within_control, notice_days: 0, arrival_delay_h: 3.5 }
+    expect: applies
+  - name: cause not told
+    facts: { as_of: 2026-11-02, origin_country: US, final_destination_country: CA, disruption: delay, notice_days: 0, arrival_delay_h: 3.5 }
+    expect: may_apply
+  - name: weather
+    facts: { as_of: 2026-11-02, origin_country: US, final_destination_country: CA, disruption: delay, cause_category: outside_control, notice_days: 0, arrival_delay_h: 3.5 }
+    expect: not_applies

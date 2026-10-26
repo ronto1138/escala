@@ -1,0 +1,48 @@
+id: us-250-denied-boarding
+jurisdiction: US
+instrument: 14 CFR Part 250 (Oversales)
+article: "250.5"
+status: VERIFICADO
+source_url: https://www.ecfr.gov/current/title-14/chapter-II/subchapter-A/part-250
+verified_on: 2026-10-21
+summary:
+  en: "If you are bumped against your will from a flight leaving the US and arrive more than 1 hour late, the airline owes you money, paid in cash or check: on domestic trips 200% of your one-way fare up to USD 1,075 (arriving 1 to 2 hours late) or 400% up to USD 2,150 (2 hours or more); on international departures 200% (1 to 4 hours) or 400% (4 hours or more), same caps. Unused extras are refunded too."
+  es: "Si te bajan de un vuelo que sale de EE. UU. sin que tú aceptes y llegas más de 1 hora tarde, la aerolínea te debe dinero, en efectivo o cheque: en viajes nacionales, 200 % de tu tarifa de ida hasta 1,075 USD (de 1 a 2 horas tarde) o 400 % hasta 2,150 USD (2 horas o más); en salidas internacionales, 200 % (de 1 a 4 horas) o 400 % (4 horas o más), con los mismos topes. También te reembolsan los extras que no usaste."
+  fr: "Si l'embarquement vous est refusé contre votre gré sur un vol au départ des États-Unis et que vous arrivez plus d'1 heure en retard, la compagnie vous doit de l'argent, en espèces ou par chèque : sur un trajet intérieur, 200 % du tarif aller jusqu'à 1 075 USD (1 à 2 heures de retard) ou 400 % jusqu'à 2 150 USD (2 heures ou plus) ; au départ vers l'étranger, 200 % (1 à 4 heures) ou 400 % (4 heures ou plus), mêmes plafonds. Les services non utilisés sont aussi remboursés."
+applies_when:
+  all:
+    - { leg_origin_country: US }
+    - { disruption: denied_boarding }
+    - { arrival_delay_h: { gt: 1 } }
+amount_rules:
+  - { when: { itinerary_type: domestic, arrival_delay_h: { gt: 1, lt: 2 } }, percent_of_fare: 200, cap: { USD: 1075 } }
+  - { when: { itinerary_type: domestic, arrival_delay_h: { gte: 2 } }, percent_of_fare: 400, cap: { USD: 2150 } }
+  - { when: { itinerary_type: international, arrival_delay_h: { gt: 1, lt: 4 } }, percent_of_fare: 200, cap: { USD: 1075 } }
+  - { when: { itinerary_type: international, arrival_delay_h: { gte: 4 } }, percent_of_fare: 400, cap: { USD: 2150 } }
+ask_if_unknown:
+  arrival_delay_h:
+    en: "How late did you (or will you) reach your destination on the new flight?"
+    es: "¿Con cuánto retraso llegaste (o llegarás) a tu destino en el nuevo vuelo?"
+    fr: "Avec combien de retard êtes-vous arrivé (ou arriverez-vous) à destination sur le nouveau vol ?"
+  fare:
+    en: "How much did you pay for this one-way flight?"
+    es: "¿Cuánto pagaste por este vuelo de ida?"
+    fr: "Combien avez-vous payé ce vol aller ?"
+not_covered:
+  - "Volunteers who give up their seat for an agreed benefit are not covered by this compensation."
+  - "The caps are adjusted every two years for inflation; the last adjustment took effect on 2025-01-22."
+tests:
+  - name: bumped on a domestic flight, 1.5 h late, fare USD 180
+    facts: { leg_origin_country: US, itinerary_type: domestic, disruption: denied_boarding, arrival_delay_h: 1.5, fare: 180, fare_currency: USD }
+    expect: applies
+    amount: { USD: 360 }
+  - name: bumped, 3 h late on a domestic flight, fare USD 900 (cap)
+    facts: { leg_origin_country: US, itinerary_type: domestic, disruption: denied_boarding, arrival_delay_h: 3, fare: 900, fare_currency: USD }
+    expect: applies
+    amount: { USD: 2150 }
+  - name: bumped, arrival not known yet
+    facts: { leg_origin_country: US, itinerary_type: domestic, disruption: denied_boarding }
+    expect: may_apply
+  - name: bumped but only 40 minutes late
+    facts: { leg_origin_country: US, itinerary_type: domestic, disruption: denied_boarding, arrival_delay_h: 0.67 }
+    expect: not_applies

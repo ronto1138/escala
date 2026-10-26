@@ -1,0 +1,35 @@
+id: ca-appr-17-rebooking
+jurisdiction: CA
+instrument: Air Passenger Protection Regulations (SOR/2019-150)
+article: "10, 17, 18, 18.2"
+status: VERIFICADO
+source_url: https://laws-lois.justice.gc.ca/eng/regulations/SOR-2019-150/FullText.html
+verified_on: 2026-10-21
+valid_from: 2019-12-15
+summary:
+  en: "For a delay of 3 hours or more or a cancellation on a flight to, from or within Canada, the airline must rebook you, whatever the cause. If the cause is within its control, a large airline must put you on its own or a partner's next flight leaving within 9 hours, or else on any airline's flight within 48 hours; if the cause is outside its control (weather, a strike, air traffic control), on its own or a partner's flight within 48 hours. If that does not work for you, you can take a refund of the unused part instead, paid within 30 days."
+  es: "Por un retraso de 3 horas o más o una cancelación en un vuelo hacia, desde o dentro de Canadá, la aerolínea debe reacomodarte, sea cual sea la causa. Si la causa está bajo su control, una aerolínea grande debe ponerte en su siguiente vuelo o el de un socio que salga dentro de 9 horas, o si no, en el de cualquier aerolínea dentro de 48 horas; si la causa está fuera de su control (clima, huelga, control aéreo), en un vuelo suyo o de un socio dentro de 48 horas. Si eso no te sirve, puedes pedir en su lugar el reembolso de la parte no usada, pagado en 30 días."
+  fr: "Pour un retard de 3 heures ou plus ou une annulation sur un vol vers, depuis ou à l'intérieur du Canada, la compagnie doit vous réacheminer, quelle que soit la cause. Si la cause dépend d'elle, un gros transporteur doit vous placer sur son prochain vol ou celui d'un partenaire partant dans les 9 heures, sinon sur le vol de n'importe quel transporteur dans les 48 heures ; si la cause ne dépend pas d'elle (météo, grève, contrôle aérien), sur un vol à elle ou d'un partenaire dans les 48 heures. Si cela ne vous convient pas, vous pouvez choisir le remboursement de la partie non utilisée, versé sous 30 jours."
+applies_when:
+  all:
+    - any:
+        - { origin_country: CA }
+        - { destination_country: CA }
+        - { final_destination_country: CA }
+    - any:
+        - { disruption: cancellation }
+        - all: [{ disruption: delay }, { any: [{ departure_delay_h: { gte: 3 } }, { arrival_delay_h: { gte: 3 } }] }]
+deadlines:
+  own_or_partner_flight_within_h: 9
+  any_airline_within_h: 48
+  refund_within_days: 30
+tests:
+  - name: Montreal to Toronto cancelled for a pilots' strike
+    facts: { as_of: 2026-11-20, origin_country: CA, destination_country: CA, disruption: cancellation, cause_category: outside_control }
+    expect: applies
+  - name: Canada, delay length not told
+    facts: { as_of: 2026-11-20, origin_country: CA, destination_country: CA, disruption: delay }
+    expect: may_apply
+  - name: Canada, 1 h late
+    facts: { as_of: 2026-11-20, origin_country: CA, destination_country: CA, disruption: delay, departure_delay_h: 1, arrival_delay_h: 1 }
+    expect: not_applies

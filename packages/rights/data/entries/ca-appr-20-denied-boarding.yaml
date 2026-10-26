@@ -1,0 +1,42 @@
+id: ca-appr-20-denied-boarding
+jurisdiction: CA
+instrument: Air Passenger Protection Regulations (SOR/2019-150)
+article: "15, 16, 20"
+status: VERIFICADO
+source_url: https://laws-lois.justice.gc.ca/eng/regulations/SOR-2019-150/FullText.html
+verified_on: 2026-10-21
+valid_from: 2019-12-15
+summary:
+  en: "If you are denied boarding for a reason within the airline's control, such as overbooking, on a flight to, from or within Canada, it owes you 900 CAD if you arrive less than 6 hours late, 1,800 CAD from 6 to under 9 hours, and 2,400 CAD at 9 hours or more, whatever the airline's size. It must pay within 48 hours of the denial, and give food, drink and a hotel if needed before the new flight."
+  es: "Si te niegan el abordaje por una causa bajo el control de la aerolínea, como la sobreventa, en un vuelo hacia, desde o dentro de Canadá, te debe 900 CAD si llegas con menos de 6 horas de retraso, 1,800 CAD de 6 a menos de 9 horas y 2,400 CAD con 9 horas o más, sea cual sea el tamaño de la aerolínea. Debe pagarte dentro de 48 horas desde la negativa, y darte comida, bebida y hotel si hace falta antes del nuevo vuelo."
+  fr: "Si l'embarquement vous est refusé pour une raison qui dépend du transporteur, comme la surréservation, sur un vol vers, depuis ou à l'intérieur du Canada, il vous doit 900 CAD si vous arrivez avec moins de 6 heures de retard, 1 800 CAD de 6 à moins de 9 heures, et 2 400 CAD à partir de 9 heures, quelle que soit sa taille. Il doit payer dans les 48 heures suivant le refus, et fournir repas, boissons et hôtel au besoin avant le nouveau vol."
+applies_when:
+  all:
+    - any:
+        - { origin_country: CA }
+        - { destination_country: CA }
+        - { final_destination_country: CA }
+    - { disruption: denied_boarding }
+    - { cause_category: within_control }
+amount_rules:
+  - { when: { arrival_delay_h: { lt: 6 } }, amount: { CAD: 900 } }
+  - { when: { arrival_delay_h: { gte: 6, lt: 9 } }, amount: { CAD: 1800 } }
+  - { when: { arrival_delay_h: { gte: 9 } }, amount: { CAD: 2400 } }
+deadlines:
+  pay_within_h: 48
+ask_if_unknown:
+  arrival_delay_h:
+    en: "How late will you reach your destination on the new flight?"
+    es: "¿Con cuánto retraso llegarás a tu destino en el nuevo vuelo?"
+    fr: "Avec combien de retard arriverez-vous à destination sur le nouveau vol ?"
+tests:
+  - name: bumped in Calgary for overbooking, 7 h late
+    facts: { as_of: 2026-11-20, origin_country: CA, destination_country: CA, disruption: denied_boarding, cause_category: within_control, arrival_delay_h: 7 }
+    expect: applies
+    amount: { CAD: 1800 }
+  - name: bumped, cause not told
+    facts: { as_of: 2026-11-20, origin_country: CA, destination_country: CA, disruption: denied_boarding }
+    expect: may_apply
+  - name: bumped for safety reasons
+    facts: { as_of: 2026-11-20, origin_country: CA, destination_country: CA, disruption: denied_boarding, cause_category: within_control_safety }
+    expect: not_applies

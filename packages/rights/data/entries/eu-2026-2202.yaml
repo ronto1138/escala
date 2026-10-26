@@ -1,0 +1,40 @@
+id: eu-2026-2202
+jurisdiction: EU
+instrument: Regulation (EU) 2026/2202, amending Regulation (EC) No 261/2004
+article: "3; new arts. 6(4), 6c, 7(1)"
+status: VERIFICADO
+source_url: https://publications.europa.eu/resource/celex/32026R2202
+verified_on: 2026-10-21
+valid_from: 2027-10-23
+summary:
+  en: "The EU reform (Regulation 2026/2202) applies only from 23 October 2027; until then Regulation 261/2004 applies unchanged. From that date: compensation of 250, 400 or 600 euros by distance for arriving more than 3 hours late or a cancellation; extraordinary circumstances follow a list in an annex that is not closed; the airline must tell you about compensation within 96 hours of the end of the journey."
+  es: "La reforma europea (Reglamento 2026/2202) aplica solo desde el 23 de octubre de 2027; hasta entonces rige el 261/2004 sin cambios. Desde esa fecha: compensación de 250, 400 o 600 euros según la distancia por llegar más de 3 horas tarde o por cancelación; las circunstancias extraordinarias siguen una lista en un anexo que no es cerrada; la aerolínea debe informarte de la compensación dentro de las 96 horas siguientes al fin del viaje."
+  fr: "La réforme européenne (règlement 2026/2202) ne s'applique qu'à partir du 23 octobre 2027 ; d'ici là, le règlement 261/2004 s'applique sans changement. À partir de cette date : indemnité de 250, 400 ou 600 euros selon la distance pour une arrivée avec plus de 3 heures de retard ou une annulation ; les circonstances extraordinaires suivent une liste en annexe qui n'est pas fermée ; la compagnie doit vous informer de l'indemnité dans les 96 heures suivant la fin du voyage."
+applies_when:
+  all:
+    - any:
+        - { origin_in_eu261_area: true }
+        - all: [{ destination_in_eu261_area: true }, { carrier_is_eu261_carrier: true }]
+    - any:
+        - { disruption: cancellation }
+        - all: [{ disruption: { in: [delay, tarmac] } }, { arrival_delay_h: { gt: 3 } }]
+    - { extraordinary_circumstances: false }
+amount_rules:
+  - { when: { distance_km: { lte: 1500 } }, amount: { EUR: 250 } }
+  - { when: { all: [{ distance_km: { gt: 1500 } }, { any: [{ intra_eu261: true }, { distance_km: { lte: 3500 } }] }] }, amount: { EUR: 400 } }
+  - { when: { all: [{ distance_km: { gt: 3500 } }, { intra_eu261: false }] }, amount: { EUR: 600 } }
+deadlines:
+  airline_informs_within_h: 96
+not_covered:
+  - "The 50% reduction of the new art. 7 (only for the 600 euro band, arriving within 4 hours) is not modelled."
+tests:
+  - name: Madrid to Barcelona in November 2027, 4 h late, crew
+    facts: { as_of: 2027-11-15, origin_in_eu261_area: true, intra_eu261: true, distance_km: 480, disruption: delay, arrival_delay_h: 4, extraordinary_circumstances: false }
+    expect: applies
+    amount: { EUR: 250 }
+  - name: November 2027, cause not told
+    facts: { as_of: 2027-11-15, origin_in_eu261_area: true, intra_eu261: true, distance_km: 480, disruption: delay, arrival_delay_h: 4 }
+    expect: may_apply
+  - name: November 2026, not in force
+    facts: { as_of: 2026-11-15, origin_in_eu261_area: true, intra_eu261: true, distance_km: 480, disruption: delay, arrival_delay_h: 4, extraordinary_circumstances: false }
+    expect: not_applies

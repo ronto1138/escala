@@ -1,0 +1,42 @@
+id: us-260-bag-fee
+jurisdiction: US
+instrument: 14 CFR Part 260 (Refunds for airline fares and ancillary service fees)
+article: "260.2, 260.5"
+status: VERIFICADO
+source_url: https://www.ecfr.gov/current/title-14/chapter-II/subchapter-A/part-260/section-260.5
+verified_on: 2026-10-21
+summary:
+  en: "If your checked bag is lost or arrives 12 hours or more after you (domestic) or 15 hours or more (international, with a nonstop leg of 12 hours or less), the airline refunds the bag fee automatically, as long as you filed a mishandled baggage report. Refund within 7 business days on a card, 20 days otherwise."
+  es: "Si tu maleta documentada se pierde o llega 12 horas o más después que tú (nacional) o 15 horas o más (internacional, con un tramo directo de 12 horas o menos), la aerolínea te devuelve el cargo de la maleta en automático, siempre que hayas levantado el reporte de equipaje. El reembolso llega en 7 días hábiles a la tarjeta, o en 20 días por otros medios."
+  fr: "Si votre bagage enregistré est perdu ou arrive 12 heures ou plus après vous (vol intérieur) ou 15 heures ou plus (international, avec un tronçon direct de 12 heures ou moins), la compagnie rembourse automatiquement les frais de bagage, à condition d'avoir fait une déclaration de bagage. Remboursement sous 7 jours ouvrables sur une carte, 20 jours sinon."
+applies_when:
+  all:
+    - any:
+        - { origin_country: US }
+        - { destination_country: US }
+    - { disruption: { in: [bag_delayed, bag_lost] } }
+    - { bag_report_filed: true }
+    - any:
+        - { disruption: bag_lost }
+        - all: [{ itinerary_type: domestic }, { bag_delay_h: { gte: 12 } }]
+        - all: [{ itinerary_type: international }, { bag_delay_h: { gte: 15 } }]
+deadlines:
+  refund_business_days_card: 7
+  refund_calendar_days_other: 20
+ask_if_unknown:
+  bag_report_filed:
+    en: "Did you file a delayed-bag report with the airline at the airport?"
+    es: "¿Levantaste el reporte de equipaje con la aerolínea en el aeropuerto?"
+    fr: "Avez-vous fait une déclaration de bagage retardé auprès de la compagnie à l'aéroport ?"
+not_covered:
+  - "The 30-hour threshold for nonstop legs longer than 12 hours is not modelled here."
+tests:
+  - name: domestic, bag 14 h late, report filed
+    facts: { origin_country: US, destination_country: US, itinerary_type: domestic, disruption: bag_delayed, bag_report_filed: true, bag_delay_h: 14 }
+    expect: applies
+  - name: domestic, bag 14 h late, report not known
+    facts: { origin_country: US, destination_country: US, itinerary_type: domestic, disruption: bag_delayed, bag_delay_h: 14 }
+    expect: may_apply
+  - name: domestic, bag 6 h late
+    facts: { origin_country: US, destination_country: US, itinerary_type: domestic, disruption: bag_delayed, bag_report_filed: true, bag_delay_h: 6 }
+    expect: not_applies

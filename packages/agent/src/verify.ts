@@ -29,10 +29,12 @@ const CURRENCY: Record<string, string> = {
   $: "$", usd: "USD", "us$": "USD", cad: "CAD", "ca$": "CAD", "c$": "CAD", eur: "EUR", "€": "EUR", euros: "EUR", euro: "EUR",
   gbp: "GBP", "£": "GBP", pound: "GBP", pounds: "GBP", libra: "GBP", libras: "GBP", livre: "GBP", livres: "GBP", sterling: "GBP",
   mxn: "MXN", pesos: "MXN", dólares: "$", dollars: "$", dollar: "$",
+  sdr: "SDR", xdr: "SDR", deg: "SDR", dts: "SDR", uma: "UMA",
   jpy: "JPY", "¥": "JPY", yen: "JPY", yenes: "JPY", chf: "CHF", francs: "CHF", francos: "CHF", aud: "AUD", cny: "CNY", inr: "INR",
 };
-const NUM = String.raw`\d{1,3}(?:[   .,]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?`;
-const CUR = String.raw`US\$|CA\$|C\$|USD|CAD|EUR|GBP|MXN|JPY|CHF|AUD|CNY|INR|€|£|¥|\$|euros?|pesos|pounds?|libras?|livres?|sterling|yen(?:es)?|francs?|francos?|(?:US\s|U\.S\.\s|canadian\s)?dollars?|dólares(?:\s(?:estadounidenses|canadienses))?|dollars?\s(?:américains|canadiens)`;
+// Thousands groups only when there is at least one separator; otherwise "2026" would read as "202" and "6".
+const NUM = String.raw`\d{1,3}(?:[   .,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?`;
+const CUR = String.raw`US\$|CA\$|C\$|USD|CAD|EUR|GBP|MXN|SDR|XDR|DEG|DTS|UMA|JPY|CHF|AUD|CNY|INR|€|£|¥|\$|euros?|pesos|pounds?|libras?|livres?|sterling|yen(?:es)?|francs?|francos?|(?:US\s|U\.S\.\s|canadian\s)?dollars?|dólares(?:\s(?:estadounidenses|canadienses))?|dollars?\s(?:américains|canadiens)`;
 const UNIT = String.raw`s|secs?|seconds?|segundos?|secondes?|h|hrs?|hours?|horas?|heures?|min|minutes?|minutos?|days?|días?|dias?|jours?|weeks?|semanas?|semaines?|months?|meses|mes|mois|years?|años?|ans?|années?`;
 const SP = String.raw`[\s\u00a0\u202f]+`;
 /** Optional separator between a number and its unit: whitespace and stray punctuation ("600-CAD", "600(CAD)"). */
@@ -50,10 +52,12 @@ const NUMBER_WORDS_BEFORE_UNIT = () =>
 
 /** Parses "1,075", "1 075", "1.075" (thousands) and "3,5" / "3.5" (decimals). */
 export function parseNumber(raw: string): number {
-  const s = raw.replace(/[\s  ]/g, "");
-  const m = s.match(/^(\d+)(?:([.,])(\d{3}))+$/);
-  if (m) return Number(s.replace(/[.,]/g, "")); // only thousands separators
-  return Number(s.replace(",", "."));
+  const s = raw.replace(/[\s\u00a0\u202f]/g, "");
+  if (/^\d+(?:[.,]\d{3})+$/.test(s)) return Number(s.replace(/[.,]/g, "")); // only thousands separators
+  const last = Math.max(s.lastIndexOf(","), s.lastIndexOf("."));
+  if (last < 0) return Number(s);
+  // "17,596.50" and "17.596,50": the last separator is the decimal one, the others group thousands.
+  return Number(`${s.slice(0, last).replace(/[.,]/g, "")}.${s.slice(last + 1)}`);
 }
 
 export function extractClaims(text: string): Claim[] {
@@ -80,16 +84,18 @@ export function extractClaims(text: string): Claim[] {
     push({ kind: "amount", text: m[0], value: parseNumber(m[2]!), currency: c }, m.index!);
     if (m[3]) push({ kind: "amount", text: m[0], value: parseNumber(m[3]), currency: c }, m.index! + 1);
   }
+  // "art. 20 — 1,800 CAD": the first number is an article, not the start of a range.
+  const afterArticle = (at: number) => /(?:\bart(?:icle|ículo|iculo)?s?\.?|\bs\.|§|\bsection|\bsecci[oó]n|\bpart(?:e|ie)?)\s*$/i.test(text.slice(Math.max(0, at - 12), at));
   for (const m of text.matchAll(new RegExp(String.raw`${RANGE}${SPO}(${CUR})(?![a-z])`, "gi"))) {
     const c = cur(m[3]!);
-    if (m[2]) push({ kind: "amount", text: m[0], value: parseNumber(m[1]!), currency: c }, m.index! + 2);
+    if (m[2] && !afterArticle(m.index!)) push({ kind: "amount", text: m[0], value: parseNumber(m[1]!), currency: c }, m.index! + 2);
     push({ kind: "amount", text: m[0], value: parseNumber(m[2] ?? m[1]!), currency: c }, m.index!);
   }
   for (const m of text.matchAll(new RegExp(String.raw`(${NUM})${SPO}(${PCT})`, "gi"))) {
     push({ kind: "percent", text: m[0], value: parseNumber(m[1]!) }, m.index!);
   }
   for (const m of text.matchAll(new RegExp(String.raw`${RANGE}${SPO}(${UNIT})\b`, "gi"))) {
-    push({ kind: "duration", text: m[0], value: parseNumber(m[1]!) }, m.index!);
+    if (!(m[2] && afterArticle(m.index!))) push({ kind: "duration", text: m[0], value: parseNumber(m[1]!) }, m.index!);
     if (m[2]) push({ kind: "duration", text: m[0], value: parseNumber(m[2]) }, m.index! + 1);
   }
   // Fail closed on spelled-out numbers next to money, percentages or time units ("four hundred dollars", "un año").
@@ -106,7 +112,7 @@ export function verify(draft: string, allowed: Allowed): Verdict {
     if (c.kind === "percent") return !allowed.percents.includes(c.value);
     if (c.kind === "duration") return !allowed.durations.includes(c.value);
     return !allowed.amounts.some(
-      (a) => a.value === c.value && (a.currency === c.currency || (c.currency === "$" && ["USD", "CAD"].includes(a.currency))),
+      (a) => a.value === c.value && (a.currency === c.currency || (c.currency === "$" && ["USD", "CAD", "MXN"].includes(a.currency))),
     );
   });
   return { ok: unmatched.length === 0, claims, unmatched };

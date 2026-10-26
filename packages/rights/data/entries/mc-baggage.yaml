@@ -1,0 +1,35 @@
+id: mc-baggage
+jurisdiction: INTL
+instrument: Montreal Convention 1999, with the ICAO limits in force from 2024-12-28
+article: "22(2), 31, 35"
+status: VERIFICADO
+source_url: https://www.icao.int/sites/default/files/secretariat/legal/LEB%20Treaty%20Collection%20Documents/2024_Revised_Limits_of_Liability_Under_the_Montreal_Convention_of_1999_en.pdf
+verified_on: 2026-10-21
+summary:
+  en: "On international trips the airline is liable for lost, damaged or delayed bags up to 1,519 SDR per passenger (an IMF unit, converted at the rate of the day), for the damage you can prove. Complain in writing within 7 days of receiving a damaged bag, or within 21 days of getting a delayed one back. A lawsuit must be filed within 2 years."
+  es: "En viajes internacionales la aerolínea responde por maletas perdidas, dañadas o retrasadas hasta 1,519 DEG por pasajero (una unidad del FMI que se convierte al tipo del día), por el daño que puedas demostrar. Reclama por escrito dentro de 7 días desde que recibes una maleta dañada, o dentro de 21 días desde que te entregan una retrasada. Una demanda tiene que presentarse dentro de 2 años."
+  fr: "Sur les voyages internationaux, la compagnie répond des bagages perdus, endommagés ou retardés jusqu'à 1 519 DTS par passager (une unité du FMI, convertie au taux du jour), pour le dommage que vous pouvez prouver. Réclamez par écrit dans les 7 jours suivant la réception d'un bagage endommagé, ou dans les 21 jours suivant la remise d'un bagage retardé. Une action en justice doit être intentée dans les 2 ans."
+applies_when:
+  all:
+    - { itinerary_type: international }
+    - { disruption: { in: [bag_lost, bag_damaged, bag_delayed] } }
+amount_rules:
+  - { when: { itinerary_type: international }, amount: { SDR: 1519 } }
+deadlines:
+  damaged_bag_protest_days: 7
+  delayed_bag_protest_days: 21
+  lawsuit_years: 2
+not_covered:
+  - "The SDR amount is not converted to local currency here; it changes daily."
+  - "Applies between states party to the Convention; all countries in this base are parties."
+tests:
+  - name: bag delayed Chicago to Montreal
+    facts: { itinerary_type: international, disruption: bag_delayed }
+    expect: applies
+    amount: { SDR: 1519 }
+  - name: international trip, problem not told
+    facts: { itinerary_type: international }
+    expect: may_apply
+  - name: domestic trip
+    facts: { itinerary_type: domestic, disruption: bag_lost }
+    expect: not_applies

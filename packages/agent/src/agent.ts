@@ -6,8 +6,8 @@ import { ConsentError, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
 import { legLine } from "./format.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
-import { factsFor, journeys, norm, type Trip } from "./trip.ts";
-import { numbersIn, verify, type Allowed, type Verdict } from "./verify.ts";
+import { factsFor, journeys, norm, type Airlines, type Trip } from "./trip.ts";
+import { extractClaims, numbersIn, verify, type Allowed, type Verdict } from "./verify.ts";
 
 export interface AgentDeps {
   client: MetaClient;
@@ -19,6 +19,8 @@ export interface AgentDeps {
   /** Called with each step, for the trust panel. */
   trace?: (step: TraceStep) => void;
   maxToolRounds?: number;
+  /** Airline reference data (country, EU carrier, APPR size). Defaults to the fictitious airlines of the demo. */
+  airlines?: Airlines;
 }
 
 export type TraceStep =
@@ -34,6 +36,13 @@ const DECLINE: Record<Lang, (reasons: string) => string> = {
   es: (r) => `Con eso no te puedo ayudar: solo estoy para tu viaje (${r}).`,
   fr: (r) => `Pour ça, je ne peux pas vous aider : je suis là seulement pour votre voyage (${r}).`,
 };
+
+/** Facts the model may pass from what the traveler said; everything else comes from the itinerary and data. */
+const STATED_FACTS = [
+  "disruption", "arrival_delay_h", "departure_delay_h", "cause_category", "notice_days", "passenger_declined_alternative",
+  "tarmac_h", "bag_delay_h", "bag_report_filed", "mobility_device", "single_booking", "fare", "fare_currency",
+] as const;
+const NUMERIC_FACTS = new Set<string>(["arrival_delay_h", "departure_delay_h", "notice_days", "tarmac_h", "bag_delay_h", "fare"]);
 
 const HISTORY_TURNS = 8;
 const HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -125,19 +134,34 @@ const TOOLS = [
     parameters: {
       type: "object",
       additionalProperties: false,
-      required: ["flight", "disruption", "arrival_delay_h", "cause_category", "notice_days", "passenger_declined_alternative"],
+      required: [
+        "flight", "disruption", "arrival_delay_h", "departure_delay_h", "cause_category", "notice_days", "passenger_declined_alternative",
+        "tarmac_h", "bag_delay_h", "bag_report_filed", "mobility_device", "single_booking", "fare", "fare_currency",
+      ],
       properties: {
         flight: { type: "string" },
-        disruption: { type: ["string", "null"], enum: ["delay", "cancellation", "denied_boarding", "tarmac", "bag_delayed", "bag_damaged", "bag_lost", null] },
+        disruption: {
+          type: ["string", "null"],
+          enum: ["delay", "cancellation", "denied_boarding", "tarmac", "bag_delayed", "bag_damaged", "bag_lost", "renumbered", null],
+          description: "denied_boarding = bumped against their will; renumbered = only the flight number changed",
+        },
         arrival_delay_h: { type: ["number", "null"], description: "Hours late at the final destination of this journey: what the traveler stated (even as an estimate) or the flight data shows" },
         cause_category: {
           type: ["string", "null"],
           enum: ["within_control", "within_control_safety", "outside_control", null],
           description:
-            "Crew shortages and scheduled maintenance are within_control even when the airline calls them safety; within_control_safety is only for an unexpected safety problem. Weather and air traffic control are outside_control. Null if unknown.",
+            "Overbooking, crew shortages and scheduled maintenance are within_control even when the airline calls them safety; within_control_safety is only for an unexpected safety problem. Weather and air traffic control are outside_control. Null if unknown.",
         },
-        notice_days: { type: ["number", "null"] },
+        notice_days: { type: ["number", "null"], description: "Days before departure the traveler was told of the disruption" },
         passenger_declined_alternative: { type: ["boolean", "null"] },
+        departure_delay_h: { type: ["number", "null"], description: "Hours late at departure, if stated or in the flight data" },
+        tarmac_h: { type: ["number", "null"], description: "Hours waiting on the tarmac with the doors closed" },
+        bag_delay_h: { type: ["number", "null"], description: "Hours the checked bag arrived after the traveler, if stated" },
+        bag_report_filed: { type: ["boolean", "null"], description: "A lost or damaged baggage report was filed with the airline" },
+        mobility_device: { type: ["boolean", "null"], description: "The bag or item is a wheelchair or other mobility device" },
+        single_booking: { type: ["boolean", "null"], description: "All flights were bought in one booking (false for self-transfer)" },
+        fare: { type: ["number", "null"], description: "One-way fare paid, if the traveler stated it" },
+        fare_currency: { type: ["string", "null"], description: "ISO currency of the fare, e.g. USD, MXN" },
       },
     },
     strict: true,
@@ -199,7 +223,9 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
     if (outScope.length) replies.push({ kind: "text", text: DECLINE[p.lang](outScope.map((x) => x.reason).join("; ")) });
     if (!inScope.length) return replies;
 
-    const allowed: Allowed = { amounts: [], percents: [], durations: [] };
+    // Durations the traveler just wrote ("20 days ago", "3.5 hours late") are facts of the trip and may be repeated.
+    // Amounts they wrote are not: "aren't I owed 600 euros?" must still be checked against the rules.
+    const allowed: Allowed = { amounts: [], percents: [], durations: extractClaims(m.text).filter((c) => c.kind === "duration").map((c) => c.value) };
     const question = inScope.map((x) => x.text).join(" ");
     const at = Date.parse(m.at) || Date.now();
     let draft = await answer(question, p, trip, allowed, recentTurns(p.id, at));
@@ -233,6 +259,9 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
       `You are Escala, a warm, plain-spoken travel companion on WhatsApp, for this traveler's trip only. Reply in ${LANG_NAME[p.lang]}, briefly, like a person who knows travel. ` +
       "Use tools for facts; never guess flight status. Never state an amount, percentage, deadline or legal article unless rights_for_trip returned it under 'applies'. " +
       "If a right only 'may apply', say what it depends on and ask the single question returned, nothing else. If the inbound aircraft is late, say it is your inference, not airline data. " +
+      "If an entry's status is not VERIFICADO, say it is not verified. A rule under 'not_in_force_yet' is a reform: say it does not apply yet and from when. " +
+      "If a rule pays a percentage of the fare and the fare is unknown, say the percentage and cap and ask for the fare only if it is the single question. " +
+      "A rule under 'excluded_by_reported_cause' is ruled out only by the reason the airline gave: say so, that it is the airline's version, and mention its limits if any; don't present it as settled. " +
       "If a rule is under 'below_threshold', mention it briefly with its threshold and source and say this trip does not reach it (\"the US refund rule needs 6 hours on an international trip; you're at 3.5\"). " +
       "If rights_for_trip returns nothing for this country or this kind of problem, say your rules don't cover it yet; never conclude that no rights exist or that the airline owes nothing. " +
       "Ask at most one question, and only the one rights_for_trip returned or one needed to answer; don't end with offers phrased as questions. " +
@@ -247,7 +276,7 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
     currentMessage = { id: messageId, at: messageAt };
     for (let round = 0; round < (deps.maxToolRounds ?? 4); round++) {
       const r = await deps.client.responses(
-        { model: "muse-spark-1.3", reasoning: { effort: "low" }, max_output_tokens: 1500, instructions, input, tools: TOOLS as unknown as unknown[] },
+        { model: "muse-spark-1.3", reasoning: { effort: "low" }, max_output_tokens: 3000, instructions, input, tools: TOOLS as unknown as unknown[] },
         { caller: "agent/loop" },
       );
       const calls = (r.output ?? []).filter((o: any) => o.type === "function_call");
@@ -281,7 +310,7 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
         {
           model: "muse-spark-1.3",
           reasoning: { effort: "low" },
-          max_output_tokens: 1200,
+          max_output_tokens: 2500,
           instructions,
           input: [
             ...input,
@@ -353,12 +382,18 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
     }
     if (name === "rights_for_trip") {
       if (!trip) return { error: "no itinerary yet" };
-      const facts: TripFacts = { ...factsFor(trip, args.flight) };
-      for (const k of ["disruption", "arrival_delay_h", "cause_category", "notice_days", "passenger_declined_alternative"] as const) {
+      const facts: TripFacts = { ...factsFor(trip, args.flight, deps.airlines) };
+      for (const k of STATED_FACTS) {
         const v = args[k];
         if (v === null || v === undefined || v === "null" || v === "") continue; // models sometimes write null as text
-        const numeric = (k === "arrival_delay_h" || k === "notice_days") && typeof v === "string" && /^\d+(\.\d+)?$/.test(v);
+        const numeric = NUMERIC_FACTS.has(k) && typeof v === "string" && /^\d+(\.\d+)?$/.test(v);
         (facts as Record<string, string | number | boolean | undefined>)[k] = numeric ? Number(v) : v;
+      }
+      // A damaged suitcase is not a wheelchair unless the traveler says so.
+      if (facts.mobility_device === undefined && /^bag_/.test(String(facts.disruption ?? ""))) facts.mobility_device = false;
+      // The EU asks about "extraordinary circumstances"; the airline's own control decides it the same way here.
+      if (facts.cause_category && facts.extraordinary_circumstances === undefined) {
+        facts.extraordinary_circumstances = facts.cause_category === "outside_control";
       }
       // A delay seen in the flight data on the day of travel was notified 0 days before departure: a fact, not a question.
       if (facts.notice_days === undefined && facts.disruption === "delay") {
@@ -370,19 +405,30 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
       const a = assess(deps.entries, facts, { lang: p.lang, alreadyAsked: already });
       if (a.question) asked.set(p.id, [...already, a.question.fact]);
       const byId = new Map(deps.entries.map((e) => [e.id, e]));
+      if (typeof facts.fare === "number" && typeof facts.fare_currency === "string") allowed.amounts.push({ currency: facts.fare_currency, value: facts.fare });
       for (const r of a.citable) {
         const e = byId.get(r.id)!;
         if (r.outcome === "applies" && r.amount) for (const [currency, value] of Object.entries(r.amount)) allowed.amounts.push({ currency, value });
+        if (r.outcome === "applies" && r.percent !== undefined) allowed.percents.push(r.percent);
+        if (r.outcome === "applies" && r.cap) for (const [currency, value] of Object.entries(r.cap)) allowed.amounts.push({ currency, value });
         numbersIn(e.applies_when).forEach((n) => allowed.durations.push(n));
         numbersIn(e.deadlines ?? {}).forEach((n) => allowed.durations.push(n));
+        numbersIn((e.amount_rules ?? []).map((x) => x.when)).forEach((n) => allowed.durations.push(n)); // the bands: "6 to 9 hours"
       }
       // A rule missed only by a threshold is said with its threshold and source; its amounts are never allowed.
-      for (const r of a.belowThreshold) numbersIn(byId.get(r.id)!.applies_when).forEach((n) => allowed.durations.push(n));
+      for (const r of a.belowThreshold) {
+        numbersIn(byId.get(r.id)!.applies_when).forEach((n) => allowed.durations.push(n));
+        numbersIn(byId.get(r.id)!.deadlines ?? {}).forEach((n) => allowed.durations.push(n));
+      }
       if (typeof facts.arrival_delay_h === "number") allowed.durations.push(facts.arrival_delay_h);
       return {
-        applies: a.citable.filter((r) => r.outcome === "applies").map((r) => cite(byId.get(r.id)!, p.lang, r.amount)),
+        applies: a.citable
+          .filter((r) => r.outcome === "applies")
+          .map((r) => ({ ...cite(byId.get(r.id)!, p.lang, r.amount), ...(r.percent !== undefined ? { percent_of_fare: r.percent, cap: r.cap ?? null } : {}), ...(r.missing.length ? { amount_depends_on: r.missing } : {}) })),
         may_apply: a.citable.filter((r) => r.outcome === "may_apply").map((r) => ({ ...cite(byId.get(r.id)!, p.lang), depends_on: r.missing })),
         below_threshold: a.belowThreshold.map((r) => ({ ...cite(byId.get(r.id)!, p.lang), why: r.reason })),
+        excluded_by_reported_cause: a.excludedByCause.map((r) => ({ ...cite(byId.get(r.id)!, p.lang), limits: byId.get(r.id)!.not_covered ?? [] })),
+        not_in_force_yet: a.notYetInForce.map((r) => ({ id: r.id, rule: `${byId.get(r.id)!.instrument}`, applies_from: r.from })),
         question: a.question?.text ?? null,
         does_not_apply: a.results.filter((r) => r.outcome === "not_applies").map((r) => ({ id: r.id, why: r.reason })),
       };

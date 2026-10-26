@@ -1,0 +1,19 @@
+id: mx-lac-foreign-carrier
+jurisdiction: MX
+instrument: Ley de Aviación Civil, art. 47 Bis (scope over foreign airlines)
+article: "47 Bis"
+status: NO_CONFIRMADO
+source_url: https://www.diputados.gob.mx/LeyesBiblio/pdf/LAC.pdf
+verified_on: 2026-10-21
+summary:
+  en: "Not verified: whether Mexico's art. 47 Bis (the 7.5% and 25% of the fare) also binds a foreign airline flying to or from Mexico has not been verified in this base. No amount can be given for it."
+  es: "No verificado: en esta base no está verificado si el art. 47 Bis mexicano (el 7.5 % y el 25 % del boleto) también obliga a una aerolínea extranjera que vuela hacia o desde México. No se puede dar un monto por esa vía."
+  fr: "Non vérifié : cette base n'a pas vérifié si l'art. 47 Bis mexicain (les 7,5 % et 25 % du billet) s'applique aussi à une compagnie étrangère qui vole vers ou depuis le Mexique. Aucun montant ne peut être donné à ce titre."
+applies_when:
+  all:
+    - any:
+        - { origin_country: MX }
+        - { destination_country: MX }
+        - { final_destination_country: MX }
+    - { not: { operating_carrier_country: MX } }
+    - { disruption: { in: [delay, cancellation, denied_boarding] } }

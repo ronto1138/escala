@@ -1,0 +1,43 @@
+id: mx-lac-47bis-cancel
+jurisdiction: MX
+instrument: Ley de Aviación Civil (last reform DOF 2025-11-14)
+article: "47 Bis, VI and X"
+status: VERIFICADO
+source_url: https://www.diputados.gob.mx/LeyesBiblio/pdf/LAC.pdf
+verified_on: 2026-10-21
+summary:
+  en: "Mexican law, for a cancellation attributable to a Mexican airline, you choose: a refund, a replacement flight on the first available flight (with calls, food, and hotel if overnight), or a later date. With the refund or the later date, the airline also owes at least 25% of the fare, within 10 calendar days of your claim."
+  es: "Ley mexicana, para una cancelación atribuible a una aerolínea mexicana, tú eliges: reembolso, vuelo sustituto en el primer vuelo disponible (con llamadas, alimentos y hotel si hay que pasar la noche) o una fecha posterior. Con el reembolso o la fecha posterior, la aerolínea además te debe al menos 25 % del boleto, dentro de 10 días naturales desde tu reclamación."
+  fr: "Loi mexicaine, pour une annulation imputable à une compagnie mexicaine, vous choisissez : remboursement, vol de remplacement sur le premier vol disponible (avec appels, repas et hôtel s'il faut passer la nuit) ou une date ultérieure. Avec le remboursement ou la date ultérieure, la compagnie doit en plus au moins 25 % du billet, dans les 10 jours civils suivant la réclamation."
+applies_when:
+  all:
+    - { operating_carrier_country: MX }
+    - any:
+        - { origin_country: MX }
+        - { destination_country: MX }
+        - { final_destination_country: MX }
+    - { disruption: cancellation }
+    - { cause_category: { in: [within_control, within_control_safety] } }
+amount_rules:
+  - { when: { disruption: cancellation }, percent_of_fare: 25 }
+deadlines:
+  pay_within_calendar_days: 10
+ask_if_unknown:
+  cause_category:
+    en: "Did the airline say why it cancelled? Under Mexican law it matters whether it was the airline's doing."
+    es: "¿La aerolínea dijo por qué canceló? En México importa si fue por causa de la aerolínea."
+    fr: "La compagnie a-t-elle dit pourquoi elle a annulé ? Au Mexique, il compte de savoir si c'est de son fait."
+not_covered:
+  - "The 25% is owed only if the traveler takes the refund or the later date, not the replacement flight."
+  - "The law does not define 'attributable' (not found)."
+tests:
+  - name: Monterrey to Guadalajara cancelled by the airline, fare 1,000 MXN
+    facts: { operating_carrier_country: MX, origin_country: MX, destination_country: MX, disruption: cancellation, cause_category: within_control, fare: 1000, fare_currency: MXN }
+    expect: applies
+    amount: { MXN: 250 }
+  - name: cause not told
+    facts: { operating_carrier_country: MX, origin_country: MX, destination_country: MX, disruption: cancellation }
+    expect: may_apply
+  - name: foreign airline
+    facts: { operating_carrier_country: US, origin_country: US, destination_country: MX, disruption: cancellation, cause_category: within_control }
+    expect: not_applies

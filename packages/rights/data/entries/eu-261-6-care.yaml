@@ -1,0 +1,41 @@
+id: eu-261-6-care
+jurisdiction: EU
+instrument: Regulation (EC) No 261/2004
+article: "6, 8, 9"
+status: VERIFICADO
+source_url: https://www.boe.es/doue/2004/046/L00001-00007.pdf
+verified_on: 2026-10-21
+valid_to: 2027-10-22
+summary:
+  en: "When your flight leaves late, the airline must look after you even if the cause was extraordinary: meals and refreshments, two calls or emails, and a hotel with transport if you have to stay overnight. It starts at 2 hours (flights up to 1,500 km), 3 hours (1,500 to 3,500 km, or longer flights within the EU) or 4 hours (longer flights). From 5 hours you can ask for a refund instead of flying."
+  es: "Cuando tu vuelo sale tarde, la aerolínea debe atenderte aunque la causa sea extraordinaria: comida y bebida, dos llamadas o correos, y hotel con traslado si tienes que pasar la noche. Empieza a las 2 horas (vuelos de hasta 1,500 km), a las 3 (de 1,500 a 3,500 km, o vuelos más largos dentro de la UE) o a las 4 (vuelos más largos). Desde las 5 horas puedes pedir el reembolso en lugar de volar."
+  fr: "Quand votre vol part en retard, la compagnie doit vous prendre en charge même si la cause est extraordinaire : repas et rafraîchissements, deux appels ou courriels, et hôtel avec transport s'il faut passer la nuit. Cela commence à 2 heures (vols jusqu'à 1 500 km), à 3 heures (de 1 500 à 3 500 km, ou vols plus longs dans l'UE) ou à 4 heures (vols plus longs). À partir de 5 heures, vous pouvez demander le remboursement au lieu de voyager."
+applies_when:
+  all:
+    - any:
+        - { origin_in_eu261_area: true }
+        - all: [{ destination_in_eu261_area: true }, { carrier_is_eu261_carrier: true }]
+    - { disruption: { in: [delay, tarmac] } }
+    - any:
+        - all: [{ distance_km: { lte: 1500 } }, { departure_delay_h: { gte: 2 } }]
+        - all: [{ distance_km: { gt: 1500 } }, { any: [{ intra_eu261: true }, { distance_km: { lte: 3500 } }] }, { departure_delay_h: { gte: 3 } }]
+        - all: [{ distance_km: { gt: 3500 } }, { intra_eu261: false }, { departure_delay_h: { gte: 4 } }]
+deadlines:
+  refund_option_from_h: 5
+ask_if_unknown:
+  departure_delay_h:
+    en: "How late is your flight leaving?"
+    es: "¿Con cuánto retraso sale tu vuelo?"
+    fr: "Avec combien de retard votre vol part-il ?"
+not_covered:
+  - "Regulation (EU) 2026/2202 changes parts of this from 2027-10-23; not modelled yet."
+tests:
+  - name: Paris to Toronto, 4.5 h late leaving
+    facts: { as_of: 2026-11-20, origin_in_eu261_area: true, distance_km: 6000, intra_eu261: false, disruption: delay, departure_delay_h: 4.5 }
+    expect: applies
+  - name: Paris to Nice, delay length not told
+    facts: { as_of: 2026-11-20, origin_in_eu261_area: true, distance_km: 690, intra_eu261: true, disruption: delay }
+    expect: may_apply
+  - name: Paris to Toronto, 2 h late leaving
+    facts: { as_of: 2026-11-20, origin_in_eu261_area: true, distance_km: 6000, intra_eu261: false, disruption: delay, departure_delay_h: 2 }
+    expect: not_applies

@@ -84,7 +84,20 @@ export function evaluateEntry(entry: RightEntry, facts: TripFacts): EntryResult 
   const rules = entry.amount_rules.map((rule) => ({ rule, ev: evaluate(rule.when, facts) }));
   const matches = rules.filter((x) => x.ev.value === "yes");
   if (matches.length === 1) {
-    return { id: entry.id, outcome: "applies", missing: [], reason: "applies", amount: matches[0]!.rule.amount, verified };
+    const rule = matches[0]!.rule;
+    if (rule.percent_of_fare === undefined) return { id: entry.id, outcome: "applies", missing: [], reason: "applies", amount: rule.amount!, verified };
+    const pct = { percent: rule.percent_of_fare, ...(rule.cap ? { cap: rule.cap } : {}) };
+    const fare = facts.fare;
+    const cur = facts.fare_currency;
+    if (typeof fare !== "number" || typeof cur !== "string") {
+      return { id: entry.id, outcome: "applies", missing: ["fare"], reason: "amount depends on: fare", ...pct, verified };
+    }
+    if (rule.cap && rule.cap[cur] === undefined) {
+      return { id: entry.id, outcome: "applies", missing: [], reason: `cap is set in ${Object.keys(rule.cap).join("/")}, fare is in ${cur}`, ...pct, verified };
+    }
+    const raw = Math.round(fare * rule.percent_of_fare) / 100;
+    const value = rule.cap ? Math.min(raw, rule.cap[cur]!) : raw;
+    return { id: entry.id, outcome: "applies", missing: [], reason: "applies", amount: { [cur]: value }, ...pct, verified };
   }
   const open = [...new Set(rules.filter((x) => x.ev.value === "unknown").flatMap((x) => [...x.ev.missing]))].sort();
   const reason = matches.length > 1 ? "amount ambiguous: more than one amount rule matches" : `amount depends on: ${open.join(", ")}`;
@@ -102,6 +115,13 @@ export interface Assessment {
    * Worth saying: "the US refund rule needs 6 hours on an international trip; you are at 3.5".
    */
   belowThreshold: EntryResult[];
+  /**
+   * Rules ruled out only by the cause as reported (usually by the airline: "weather"). That is the airline's word,
+   * and some regimes presume the opposite or never define the term, so they are said, not dropped.
+   */
+  excludedByCause: EntryResult[];
+  /** Rules that would apply to this trip but are not in force yet on its date (a reform), with the date they start. */
+  notYetInForce: Array<EntryResult & { from: string }>;
 }
 
 /** Numeric facts whose threshold alone can decide a rule. */
@@ -135,10 +155,28 @@ export function assess(
     return evaluateEntry(entries[i]!, without).outcome !== "not_applies";
   });
 
+  const excludedByCause = results.filter((r, i) => {
+    if (r.outcome !== "not_applies" || /in force/.test(r.reason)) return false;
+    if (facts.cause_category === undefined && facts.extraordinary_circumstances === undefined) return false;
+    const { cause_category: _c, extraordinary_circumstances: _x, ...rest } = facts;
+    return evaluateEntry(entries[i]!, rest).outcome !== "not_applies";
+  });
+
+  const notYetInForce = results.flatMap((r, i) => {
+    const e = entries[i]!;
+    if (r.outcome !== "not_applies" || !e.valid_from || !/not in force until/.test(r.reason)) return [];
+    // Whether the reform would cover this trip at all; its own exceptions (the cause) are its business, not ours here.
+    const { cause_category: _c, extraordinary_circumstances: _x, ...rest } = facts;
+    const then = evaluateEntry(e, { ...rest, as_of: e.valid_from });
+    return then.outcome === "not_applies" ? [] : [{ ...r, from: e.valid_from }];
+  });
+
   return {
     results,
     citable,
     belowThreshold,
+    excludedByCause,
+    notYetInForce,
     ...(best ? { question: { fact: best[0], text: texts.get(best[0])!, resolves: best[1] } } : {}),
   };
 }

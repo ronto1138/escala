@@ -7,9 +7,9 @@ source_url: https://laws-lois.justice.gc.ca/eng/regulations/SOR-2019-150/FullTex
 verified_on: 2026-10-21
 valid_from: 2019-12-15
 summary:
-  en: "Compensation for a delay or cancellation within the airline's control and not required for safety, if you were told 14 days or less before departure, based on how late you reach the destination on your ticket."
-  es: "Compensación por un retraso o una cancelación bajo el control de la aerolínea y no por seguridad, si te avisaron con 14 días o menos, según cuánto tarde llegues al destino de tu boleto."
-  fr: "Indemnité pour un retard ou une annulation attribuable au transporteur et non nécessaire pour la sécurité, si vous avez été avisé 14 jours ou moins avant le départ, selon le retard à l'arrivée à la destination de votre billet."
+  en: "Compensation for a delay or cancellation within the airline's control and not required for safety, if you were told 14 days or less before departure, based on how late you reach the destination on your ticket. Scheduled maintenance and crew shortages are within its control, and in a complaint to the Canadian Transportation Agency the disruption is presumed to be within its control unless the airline proves otherwise. Ask the airline within 1 year; it must pay or explain within 30 days. Not paid twice for the same event under another regime (such as the EU's). The 2023 reform (C-47) is not in force."
+  es: "Compensación por un retraso o una cancelación bajo el control de la aerolínea y no por seguridad, si te avisaron con 14 días o menos, según cuánto tarde llegues al destino de tu boleto. El mantenimiento programado y la falta de tripulación están bajo su control, y en una queja ante la Agencia de Transporte de Canadá se presume que la interrupción estaba bajo su control salvo que la aerolínea pruebe lo contrario. Pídela a la aerolínea dentro de 1 año; debe pagar o explicar en 30 días. No se cobra dos veces por el mismo hecho bajo otro régimen (como el de la UE). La reforma de 2023 (C-47) no está en vigor."
+  fr: "Indemnité pour un retard ou une annulation attribuable au transporteur et non nécessaire pour la sécurité, si vous avez été avisé 14 jours ou moins avant le départ, selon le retard à l'arrivée à la destination de votre billet. L'entretien programmé et le manque d'équipage dépendent du transporteur, et dans une plainte à l'Office des transports du Canada, la perturbation est présumée dépendre de lui sauf preuve contraire. Demandez-la dans un délai d'1 an ; la compagnie doit payer ou s'expliquer sous 30 jours. Pas de double indemnité pour le même événement sous un autre régime (comme celui de l'UE). La réforme de 2023 (C-47) n'est pas en vigueur."
 applies_when:
   all:
     - any:
@@ -28,7 +28,7 @@ amount_rules:
   - { when: { carrier_size_appr: small, arrival_delay_h: { gte: 6, lt: 9 } }, amount: { CAD: 250 } }
   - { when: { carrier_size_appr: small, arrival_delay_h: { gte: 9 } }, amount: { CAD: 500 } }
 deadlines:
-  passenger_request_days: 365
+  passenger_request_years: 1
   carrier_response_days: 30
 ask_if_unknown:
   cause_category:
@@ -36,6 +36,7 @@ ask_if_unknown:
     es: "¿La aerolínea te dijo por qué se retrasó el vuelo?"
     fr: "La compagnie vous a-t-elle dit pourquoi le vol est en retard ?"
 not_covered:
+  - "In a complaint to the Canadian Transportation Agency the disruption is presumed to be within the airline's control and not required for safety, unless the airline proves otherwise (Canada Transportation Act s. 85.07(2))."
   - "The 2023 amendments (C-47, s. 465) are not in force as of 2026-10-21."
   - "Connection that starts in the US with one ticket to Canada: scope to be confirmed against the regulation text."
 tests:

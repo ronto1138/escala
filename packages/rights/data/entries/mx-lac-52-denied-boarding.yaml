@@ -1,0 +1,33 @@
+id: mx-lac-52-denied-boarding
+jurisdiction: MX
+instrument: Ley de Aviación Civil (last reform DOF 2025-11-14)
+article: "52, 52 Bis"
+status: VERIFICADO
+source_url: https://www.diputados.gob.mx/LeyesBiblio/pdf/LAC.pdf
+verified_on: 2026-10-21
+summary:
+  en: "Mexican law, if a Mexican airline denies you boarding because it oversold the flight, you choose: a refund, a replacement flight (with services and hotel if overnight), or a later date. With the refund or the later date, it also owes at least 25% of the fare. It must ask for volunteers first."
+  es: "Ley mexicana: si una aerolínea mexicana te niega el abordaje porque vendió de más, tú eliges: reembolso, vuelo sustituto (con servicios y hotel si hay que pasar la noche) o una fecha posterior. Con el reembolso o la fecha posterior, además te debe al menos 25 % del boleto. Primero debe pedir voluntarios."
+  fr: "Loi mexicaine : si une compagnie mexicaine vous refuse l'embarquement pour surréservation, vous choisissez : remboursement, vol de remplacement (avec services et hôtel s'il faut passer la nuit) ou une date ultérieure. Avec le remboursement ou la date ultérieure, elle doit en plus au moins 25 % du billet. Elle doit d'abord demander des volontaires."
+applies_when:
+  all:
+    - { operating_carrier_country: MX }
+    - any:
+        - { origin_country: MX }
+        - { destination_country: MX }
+    - { disruption: denied_boarding }
+amount_rules:
+  - { when: { disruption: denied_boarding }, percent_of_fare: 25 }
+not_covered:
+  - "Does not apply to free or non-public fares, nor to travelers who did not check in on time (art. 53)."
+tests:
+  - name: bumped in Mexico City, fare 3,000 MXN
+    facts: { operating_carrier_country: MX, origin_country: MX, destination_country: MX, disruption: denied_boarding, fare: 3000, fare_currency: MXN }
+    expect: applies
+    amount: { MXN: 750 }
+  - name: Mexican flight, problem not told
+    facts: { operating_carrier_country: MX, origin_country: MX, destination_country: MX }
+    expect: may_apply
+  - name: bumped in the US by a US airline
+    facts: { operating_carrier_country: US, origin_country: US, destination_country: US, disruption: denied_boarding }
+    expect: not_applies

@@ -1,0 +1,30 @@
+id: us-dot-complaint
+jurisdiction: US
+instrument: US DOT, File a Consumer Complaint (page updated 2025-08-01)
+article: "airline first, then DOT"
+status: VERIFICADO
+source_url: https://airconsumer.dot.gov/consumer/s/oacp-form
+verified_on: 2026-10-21
+summary:
+  en: "To complain, write to the airline first: it must acknowledge within 30 days and answer in writing within 60. Then you can file with the US DOT, which forwards it to the airline but does not investigate every complaint."
+  es: "Para reclamar, escribe primero a la aerolínea: debe acusar recibo en 30 días y responder por escrito en 60. Después puedes presentar la queja ante el DOT de EE. UU., que la pasa a la aerolínea pero no investiga cada caso."
+  fr: "Pour réclamer, écrivez d'abord à la compagnie : elle doit accuser réception sous 30 jours et répondre par écrit sous 60. Ensuite, vous pouvez saisir le DOT américain, qui transmet à la compagnie mais n'enquête pas sur chaque plainte."
+applies_when:
+  all:
+    - any:
+        - { origin_country: US }
+        - { destination_country: US }
+    - { disruption: { in: [delay, cancellation, denied_boarding, tarmac, bag_delayed, bag_damaged, bag_lost] } }
+deadlines:
+  airline_acknowledges_days: 30
+  airline_answers_days: 60
+tests:
+  - name: US delay
+    facts: { origin_country: US, destination_country: US, disruption: delay }
+    expect: applies
+  - name: US trip, nothing told yet
+    facts: { origin_country: US }
+    expect: may_apply
+  - name: Europe only
+    facts: { origin_country: FR, destination_country: FR, disruption: delay }
+    expect: not_applies

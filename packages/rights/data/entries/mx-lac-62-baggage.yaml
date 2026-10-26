@@ -1,0 +1,35 @@
+id: mx-lac-62-baggage
+jurisdiction: MX
+instrument: Ley de Aviación Civil (last reform DOF 2025-11-14); UMA 2026 (INEGI, DOF 2026-01-09)
+article: "62, 66"
+status: VERIFICADO
+source_url: https://www.diputados.gob.mx/LeyesBiblio/pdf/LAC.pdf
+verified_on: 2026-10-21
+summary:
+  en: "On domestic flights in Mexico, a lost or damaged checked bag is paid up to 150 UMA, about 17,596.50 MXN with the 2026 UMA (our own calculation). Claim with the airline within 15 days of receiving the bag or the day it should have arrived; without that claim you lose the right to sue. Legal actions expire after 90 days."
+  es: "En vuelos nacionales en México, una maleta documentada perdida o dañada se paga hasta 150 UMA, unos 17,596.50 MXN con la UMA de 2026 (cálculo propio). Reclama a la aerolínea dentro de 15 días desde que recibiste la maleta o desde que debió llegar; sin esa reclamación pierdes la acción. Las acciones prescriben a los 90 días."
+  fr: "Sur les vols intérieurs au Mexique, un bagage enregistré perdu ou endommagé est indemnisé jusqu'à 150 UMA, soit environ 17 596,50 MXN avec l'UMA de 2026 (notre calcul). Réclamez auprès de la compagnie dans les 15 jours suivant la réception du bagage ou la date où il aurait dû arriver ; sans cette réclamation, vous perdez le droit d'agir. Les actions se prescrivent par 90 jours."
+applies_when:
+  all:
+    - { itinerary_type: domestic }
+    - { origin_country: MX }
+    - { disruption: { in: [bag_lost, bag_damaged] } }
+amount_rules:
+  - { when: { itinerary_type: domestic }, amount: { UMA: 150, MXN: 17596.5 } }
+deadlines:
+  claim_to_airline_days: 15
+  legal_action_days: 90
+not_covered:
+  - "The MXN figure uses the 2026 UMA (117.31 MXN a day, valid 2026-02-01 to 2027-01-31) and is recalculated every February."
+  - "Carry-on bags have a different limit (80 UMA), not modelled here."
+tests:
+  - name: damaged bag Merida to Mexico City
+    facts: { itinerary_type: domestic, origin_country: MX, disruption: bag_damaged }
+    expect: applies
+    amount: { UMA: 150, MXN: 17596.5 }
+  - name: domestic Mexico, problem not told
+    facts: { itinerary_type: domestic, origin_country: MX }
+    expect: may_apply
+  - name: international from Mexico (Montreal Convention instead)
+    facts: { itinerary_type: international, origin_country: MX, disruption: bag_lost }
+    expect: not_applies

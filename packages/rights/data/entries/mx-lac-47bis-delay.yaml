@@ -1,0 +1,46 @@
+id: mx-lac-47bis-delay
+jurisdiction: MX
+instrument: Ley de Aviación Civil (last reform DOF 2025-11-14)
+article: "47 Bis, V and X"
+status: VERIFICADO
+source_url: https://www.diputados.gob.mx/LeyesBiblio/pdf/LAC.pdf
+verified_on: 2026-10-21
+summary:
+  en: "Mexican law, for a delay attributable to a Mexican airline: over 1 hour, compensation under the airline's own policy (discounts, food or drink); over 2 and under 4 hours, discounts of at least 7.5% of the fare; over 4 hours, also a refund, a replacement flight or a later date, and if you take the refund or the later date, at least 25% of the fare. Compensation is due within 10 calendar days of your claim. The law does not define 'attributable'."
+  es: "Ley mexicana, para un retraso atribuible a una aerolínea mexicana: más de 1 hora, compensación según las políticas de la aerolínea (descuentos, alimentos o bebidas); más de 2 y menos de 4 horas, descuentos de al menos 7.5 % del boleto; más de 4 horas, además reembolso, vuelo sustituto o fecha posterior, y si eliges el reembolso o la fecha posterior, al menos 25 % del boleto. Se paga dentro de 10 días naturales desde tu reclamación. La ley no define qué es 'atribuible'."
+  fr: "Loi mexicaine, pour un retard imputable à une compagnie mexicaine : plus d'1 heure, compensation selon la politique de la compagnie (réductions, repas ou boissons) ; plus de 2 heures et moins de 4, réductions d'au moins 7,5 % du billet ; plus de 4 heures, en plus remboursement, vol de remplacement ou date ultérieure, et si vous choisissez le remboursement ou la date ultérieure, au moins 25 % du billet. À verser dans les 10 jours civils suivant la réclamation. La loi ne définit pas « imputable »."
+applies_when:
+  all:
+    - { operating_carrier_country: MX }
+    - any:
+        - { origin_country: MX }
+        - { destination_country: MX }
+        - { final_destination_country: MX }
+    - { disruption: delay }
+    - { cause_category: { in: [within_control, within_control_safety] } }
+    - { arrival_delay_h: { gt: 1 } }
+amount_rules:
+  - { when: { arrival_delay_h: { gt: 2, lt: 4 } }, percent_of_fare: 7.5 }
+  - { when: { arrival_delay_h: { gt: 4 } }, percent_of_fare: 25 }
+deadlines:
+  pay_within_calendar_days: 10
+ask_if_unknown:
+  cause_category:
+    en: "Did the airline say why the flight is late? Under Mexican law it matters whether it was the airline's doing."
+    es: "¿La aerolínea dijo por qué se retrasó? En México importa si fue por causa de la aerolínea."
+    fr: "La compagnie a-t-elle dit pourquoi le vol est en retard ? Au Mexique, il compte de savoir si c'est de son fait."
+not_covered:
+  - "The law does not define 'attributable' nor list causes (searched 2026-10-21, not found)."
+  - "The law measures the delay itself; the arrival delay is used here."
+  - "Whether art. 47 Bis covers foreign airlines is not verified: see mx-lac-foreign-carrier."
+tests:
+  - name: Mexico City to Cancun, 3 h late, crew, fare 2,400 MXN
+    facts: { operating_carrier_country: MX, origin_country: MX, destination_country: MX, disruption: delay, cause_category: within_control, arrival_delay_h: 3, fare: 2400, fare_currency: MXN }
+    expect: applies
+    amount: { MXN: 180 }
+  - name: cause not told
+    facts: { operating_carrier_country: MX, origin_country: MX, destination_country: MX, disruption: delay, arrival_delay_h: 3 }
+    expect: may_apply
+  - name: weather
+    facts: { operating_carrier_country: MX, origin_country: MX, destination_country: MX, disruption: delay, cause_category: outside_control, arrival_delay_h: 5 }
+    expect: not_applies

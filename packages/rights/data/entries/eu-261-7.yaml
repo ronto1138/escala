@@ -17,7 +17,7 @@ applies_when:
         - all: [{ destination_in_eu261_area: true }, { carrier_is_eu261_carrier: true }]
     - any:
         - { disruption: cancellation }
-        - all: [{ disruption: delay }, { arrival_delay_h: { gte: 3 } }]
+        - all: [{ disruption: { in: [delay, tarmac] } }, { arrival_delay_h: { gte: 3 } }]
     - { extraordinary_circumstances: false }
 amount_rules:
   - { when: { distance_km: { lte: 1500 } }, amount: { EUR: 250 } }
@@ -29,6 +29,7 @@ ask_if_unknown:
     es: "¿La aerolínea dio un motivo, como el clima, una huelga de control aéreo o un tema de seguridad?"
     fr: "La compagnie a-t-elle donné une raison, comme la météo, une grève du contrôle aérien ou un problème de sûreté ?"
 not_covered:
+  - "A technical problem is not an extraordinary circumstance unless it is not inherent in normal operations and beyond the airline's control (CJEU C-549/07 Wallentin-Hermann); a bird strike is one (C-315/15 Pešková). The engine reads the airline's control from the cause the traveler reports."
   - "Cancellations announced 14 days or more ahead, and rerouting exceptions of art. 5(1)(c), are not modelled here yet."
   - "The 50% reduction of art. 7(2) when rerouted is not modelled here yet."
   - "Regulation (EU) 2026/2202 replaces parts of this from 2027-10-23; it is a separate entry."

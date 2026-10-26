@@ -60,7 +60,9 @@ export const AIRPORTS: Record<string, Airport> = {
 };
 
 /** Fictitious airlines of the demo. Real airlines are never named in this repository. */
-export const AIRLINES: Record<string, { country: string; eu261Carrier: boolean; apprSize: "large" | "small" }> = {
+export type Airlines = Record<string, { country: string; eu261Carrier: boolean; apprSize?: "large" | "small" }>;
+
+export const AIRLINES: Airlines = {
   ZZ: { country: "US", eu261Carrier: false, apprSize: "large" },
   ZY: { country: "FR", eu261Carrier: true, apprSize: "large" },
   ZX: { country: "CA", eu261Carrier: false, apprSize: "large" },
@@ -98,14 +100,14 @@ export function journeys(trip: Trip): Leg[][] {
 }
 
 /** The facts the rights engine needs, for the journey that contains `flight`. Unknowns stay undefined. */
-export function factsFor(trip: Trip, flight: string): TripFacts {
+export function factsFor(trip: Trip, flight: string, airlines: Airlines = AIRLINES): TripFacts {
   const j = journeys(trip).find((js) => js.some((l) => norm(l.flight) === norm(flight)));
   if (!j) return {};
   const leg = j.find((l) => norm(l.flight) === norm(flight))!;
   const first = j[0]!;
   const last = j.at(-1)!;
   const country = (iata: string) => AIRPORTS[iata]?.country;
-  const airline = AIRLINES[norm(leg.flight).slice(0, 2)];
+  const airline = airlines[norm(leg.flight).slice(0, 2)];
   const all = j.flatMap((l) => [country(l.from), country(l.to)]);
   const countries = new Set(all.filter(Boolean));
   const facts: TripFacts = { as_of: leg.date };
@@ -124,6 +126,9 @@ export function factsFor(trip: Trip, flight: string): TripFacts {
   set("operating_carrier_country", airline?.country);
   set("carrier_is_eu261_carrier", airline?.eu261Carrier);
   set("carrier_size_appr", airline?.apprSize);
+  set("carrier_is_uk_or_eu_carrier", airline ? airline.eu261Carrier || airline.country === "GB" : undefined);
+  set("leg_origin_country", country(leg.from));
+  set("connection", j.length > 1);
   set("distance_km", greatCircleKm(first.from, last.to));
   const ca = [country(first.from), country(last.to)];
   set("intra_eu261", ca.every((c) => c !== undefined && EU261_AREA.has(c)));

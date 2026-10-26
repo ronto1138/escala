@@ -1,0 +1,43 @@
+id: uk-261-7
+jurisdiction: UK
+instrument: UK261 (Regulation 261/2004 as retained, amended by SI 2019/278 and SI 2023/1370)
+article: "3, 6(3), 7(1)"
+status: VERIFICADO
+source_url: https://www.legislation.gov.uk/eur/2004/261
+verified_on: 2026-10-21
+summary:
+  en: "Under UK law, if you reach your final destination 3 hours or more late, or your flight is cancelled, you get 220, 350 or 520 pounds by distance, unless the airline proves extraordinary circumstances. It covers flights leaving the UK on any airline, and flights into the UK on a UK or EU airline. A journey booked as one booking counts as a whole."
+  es: "Con la ley del Reino Unido, si llegas a tu destino final 3 horas o más tarde, o te cancelan, recibes 220, 350 o 520 libras según la distancia, salvo que la aerolínea pruebe circunstancias extraordinarias. Cubre vuelos que salen del Reino Unido con cualquier aerolínea, y vuelos que llegan al Reino Unido con aerolínea británica o de la UE. Un viaje comprado en una sola reserva cuenta completo."
+  fr: "Selon le droit britannique, si vous arrivez à destination finale avec 3 heures de retard ou plus, ou si votre vol est annulé, vous recevez 220, 350 ou 520 livres selon la distance, sauf si la compagnie prouve des circonstances extraordinaires. Cela couvre les vols au départ du Royaume-Uni sur toute compagnie, et les vols vers le Royaume-Uni sur une compagnie britannique ou de l'UE. Un voyage acheté en une seule réservation compte comme un tout."
+applies_when:
+  all:
+    - any:
+        - { origin_country: GB }
+        - all: [{ final_destination_country: GB }, { carrier_is_uk_or_eu_carrier: true }]
+    - any:
+        - { disruption: cancellation }
+        - all: [{ disruption: { in: [delay, tarmac] } }, { arrival_delay_h: { gte: 3 } }]
+    - { extraordinary_circumstances: false }
+amount_rules:
+  - { when: { distance_km: { lte: 1500 } }, amount: { GBP: 220 } }
+  - { when: { all: [{ distance_km: { gt: 1500 } }, { distance_km: { lte: 3500 } }] }, amount: { GBP: 350 } }
+  - { when: { distance_km: { gt: 3500 } }, amount: { GBP: 520 } }
+ask_if_unknown:
+  extraordinary_circumstances:
+    en: "Did the airline give a reason, such as weather, an air traffic control strike or a security issue?"
+    es: "¿La aerolínea dio un motivo, como el clima, una huelga de control aéreo o un tema de seguridad?"
+    fr: "La compagnie a-t-elle donné une raison, comme la météo, une grève du contrôle aérien ou un problème de sûreté ?"
+not_covered:
+  - "The 50% reduction when rerouted (art. 7(2)) is not modelled."
+  - "CAA guidance pays 260 pounds for arriving 3 to 4 hours late beyond 3,500 km; the law text says 520. Escala cites the law."
+tests:
+  - name: London to Toronto, 5 h late, crew
+    facts: { origin_country: GB, distance_km: 5700, disruption: delay, arrival_delay_h: 5, extraordinary_circumstances: false }
+    expect: applies
+    amount: { GBP: 520 }
+  - name: London to Paris, cause not told
+    facts: { origin_country: GB, distance_km: 350, disruption: delay, arrival_delay_h: 3.5 }
+    expect: may_apply
+  - name: New York to London on a US airline
+    facts: { origin_country: US, final_destination_country: GB, carrier_is_uk_or_eu_carrier: false, disruption: delay, arrival_delay_h: 5, extraordinary_circumstances: false }
+    expect: not_applies

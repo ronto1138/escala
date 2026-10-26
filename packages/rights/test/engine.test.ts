@@ -67,6 +67,11 @@ describe("demo trip: Austin -> Chicago -> Montreal, 3.5 h late, inbound aircraft
     expect(late.belowThreshold.map((r) => r.id)).not.toContain("us-260-refund");
   });
 
+  it("keeps a rule the airline's stated cause rules out, so it can be said as the airline's version", () => {
+    const a = assess(entries, { ...facts, cause_category: "outside_control" }, { lang: "en" });
+    expect(a.excludedByCause.map((r) => r.id)).toContain("ca-appr-19");
+  });
+
   it("never asks the same question twice on a trip", () => {
     const a = assess(entries, facts, { lang: "es", alreadyAsked: ["cause_category"] });
     expect(a.question?.fact).not.toBe("cause_category");

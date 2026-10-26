@@ -1,0 +1,30 @@
+id: eu-261-8-cancel
+jurisdiction: EU
+instrument: Regulation (EC) No 261/2004
+article: "5(1), 8, 9"
+status: VERIFICADO
+source_url: https://www.boe.es/doue/2004/046/L00001-00007.pdf
+verified_on: 2026-10-21
+valid_to: 2027-10-22
+summary:
+  en: "If your flight is cancelled you choose, even when the cause was extraordinary: a refund within 7 days (with a flight back to your starting point if the trip no longer makes sense), another flight as soon as possible, or a later date that suits you. While you wait, meals, calls and a hotel if needed. Compensation is a separate question."
+  es: "Si te cancelan el vuelo, tú eliges, aunque la causa sea extraordinaria: reembolso en 7 días (con vuelo de regreso a tu origen si el viaje ya no tiene sentido), otro vuelo lo antes posible o una fecha posterior que te convenga. Mientras esperas, comida, llamadas y hotel si hace falta. La compensación es otro tema."
+  fr: "Si votre vol est annulé, vous choisissez, même si la cause était extraordinaire : un remboursement sous 7 jours (avec un vol retour vers votre point de départ si le voyage n'a plus de sens), un autre vol dès que possible, ou une date ultérieure qui vous convient. Pendant l'attente, repas, appels et hôtel si nécessaire. L'indemnisation est une autre question."
+applies_when:
+  all:
+    - any:
+        - { origin_in_eu261_area: true }
+        - all: [{ destination_in_eu261_area: true }, { carrier_is_eu261_carrier: true }]
+    - { disruption: cancellation }
+deadlines:
+  refund_within_days: 7
+tests:
+  - name: Rome to Madrid cancelled for an ATC strike
+    facts: { as_of: 2026-11-20, origin_in_eu261_area: true, disruption: cancellation, extraordinary_circumstances: true }
+    expect: applies
+  - name: leaving the EU, problem not told
+    facts: { as_of: 2026-11-20, origin_in_eu261_area: true }
+    expect: may_apply
+  - name: US to Mexico
+    facts: { as_of: 2026-11-20, origin_in_eu261_area: false, destination_in_eu261_area: false, disruption: cancellation }
+    expect: not_applies

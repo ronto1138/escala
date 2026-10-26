@@ -14,8 +14,24 @@ export interface TripFacts {
   carrier_is_eu261_carrier?: boolean;
   carrier_size_appr?: "large" | "small";
   itinerary_type?: "domestic" | "international";
-  disruption?: "delay" | "cancellation" | "denied_boarding" | "tarmac" | "bag_delayed" | "bag_damaged" | "bag_lost";
+  disruption?: "delay" | "cancellation" | "denied_boarding" | "tarmac" | "bag_delayed" | "bag_damaged" | "bag_lost" | "renumbered";
   arrival_delay_h?: number;
+  /** Hours late at departure (care thresholds are measured from the scheduled departure). */
+  departure_delay_h?: number;
+  /** Country of the airport this flight leaves from (tarmac and denied-boarding rules look at the airport). */
+  leg_origin_country?: string;
+  carrier_is_uk_or_eu_carrier?: boolean;
+  tarmac_h?: number;
+  bag_delay_h?: number;
+  /** A Mishandled Baggage Report (or PIR) was filed with the airline. */
+  bag_report_filed?: boolean;
+  /** The damaged or lost item is a wheelchair or other mobility device. */
+  mobility_device?: boolean;
+  /** All flights of the journey were bought in one booking. */
+  single_booking?: boolean;
+  /** One-way fare paid, and its currency, for rules that pay a percentage of it. */
+  fare?: number;
+  fare_currency?: string;
   cause_category?: "within_control" | "within_control_safety" | "outside_control";
   extraordinary_circumstances?: boolean;
   notice_days?: number;
@@ -44,7 +60,11 @@ export type Condition =
 
 export interface AmountRule {
   when: Condition;
-  amount: Record<string, number>; // currency code -> amount, e.g. { CAD: 400 }
+  /** Fixed amounts: currency code -> amount, e.g. { CAD: 400 }. */
+  amount?: Record<string, number>;
+  /** Or a percentage of the one-way fare, optionally capped per currency (US denied boarding: 200 %, max USD 1,075). */
+  percent_of_fare?: number;
+  cap?: Record<string, number>;
 }
 
 export type Localized = Record<Lang, string>;
@@ -79,5 +99,8 @@ export interface EntryResult {
   reason: string;
   /** Present only when the entry applies and exactly one amount rule matches. */
   amount?: Record<string, number>;
+  /** For percentage rules: the percentage and cap, even when the fare is unknown and no amount can be computed. */
+  percent?: number;
+  cap?: Record<string, number>;
   verified: boolean;
 }

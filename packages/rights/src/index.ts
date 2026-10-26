@@ -43,6 +43,9 @@ export function validateEntries(entries: RightEntry[]): string[] {
         if (!kinds.has(k)) problems.push(`${where}: VERIFICADO entries need a "${k}" test`);
       }
     }
+    for (const [i, rule] of (e.amount_rules ?? []).entries()) {
+      if (!rule.amount === (rule.percent_of_fare === undefined)) problems.push(`${where}: amount rule ${i} needs exactly one of amount or percent_of_fare`);
+    }
     for (const t of e.tests ?? []) {
       const r = evaluateEntry(e, t.facts);
       if (r.outcome !== t.expect) problems.push(`${where}: test "${t.name}" expected ${t.expect}, got ${r.outcome} (${r.reason})`);

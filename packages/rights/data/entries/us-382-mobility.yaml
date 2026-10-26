@@ -1,0 +1,37 @@
+id: us-382-mobility
+jurisdiction: US
+instrument: 14 CFR Part 382 (Nondiscrimination on the basis of disability in air travel)
+article: "382.131, 382.151, 382.155, 382.159"
+status: VERIFICADO
+source_url: https://www.ecfr.gov/current/title-14/part-382
+verified_on: 2026-10-21
+summary:
+  en: "If the airline loses or damages your wheelchair or mobility device, the baggage limit does not apply: it owes the original purchase price, for repair or replacement. Ask for the Complaints Resolution Official at the airport. Write to the airline within 45 days (after that it does not have to answer); it must answer in writing within 30 days. You can complain to the US DOT within 6 months."
+  es: "Si la aerolínea pierde o daña tu silla de ruedas o tu dispositivo de movilidad, el tope de equipaje no aplica: debe pagar el precio de compra original, para repararlo o reponerlo. Pide en el aeropuerto al responsable de quejas (Complaints Resolution Official). Escribe a la aerolínea dentro de 45 días (después ya no está obligada a responder); debe contestarte por escrito en 30 días. Puedes quejarte ante el DOT dentro de 6 meses."
+  fr: "Si la compagnie perd ou endommage votre fauteuil roulant ou votre aide à la mobilité, le plafond des bagages ne s'applique pas : elle doit payer le prix d'achat d'origine, pour la réparation ou le remplacement. Demandez le Complaints Resolution Official à l'aéroport. Écrivez à la compagnie dans les 45 jours (au-delà, elle n'est pas tenue de répondre) ; elle doit répondre par écrit sous 30 jours. Vous pouvez saisir le DOT américain dans les 6 mois."
+applies_when:
+  all:
+    - any:
+        - { origin_country: US }
+        - { destination_country: US }
+    - { disruption: { in: [bag_lost, bag_damaged] } }
+    - { mobility_device: true }
+deadlines:
+  write_to_airline_within_days: 45
+  airline_written_answer_days: 30
+  dot_complaint_within_months: 6
+ask_if_unknown:
+  mobility_device:
+    en: "Is the item a wheelchair or another mobility device?"
+    es: "¿Es una silla de ruedas u otro dispositivo de movilidad?"
+    fr: "S'agit-il d'un fauteuil roulant ou d'une autre aide à la mobilité ?"
+tests:
+  - name: damaged wheelchair in Atlanta
+    facts: { origin_country: US, destination_country: US, disruption: bag_damaged, mobility_device: true }
+    expect: applies
+  - name: damaged item, kind not known
+    facts: { origin_country: US, destination_country: US, disruption: bag_damaged }
+    expect: may_apply
+  - name: ordinary suitcase
+    facts: { origin_country: US, destination_country: US, disruption: bag_damaged, mobility_device: false }
+    expect: not_applies

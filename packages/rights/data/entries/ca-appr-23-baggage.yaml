@@ -1,0 +1,36 @@
+id: ca-appr-23-baggage
+jurisdiction: CA
+instrument: Air Passenger Protection Regulations (SOR/2019-150), with the Montreal Convention limits
+article: "23"
+status: VERIFICADO
+source_url: https://laws-lois.justice.gc.ca/eng/regulations/SOR-2019-150/FullText.html
+verified_on: 2026-10-21
+valid_from: 2019-12-15
+summary:
+  en: "On flights to, from or within Canada, for a lost, damaged or delayed bag the airline refunds the fees you paid for that bag and pays compensation under the Montreal Convention, up to 1,519 SDR, also on domestic flights. A bag missing for more than 21 days counts as lost. Claim within 7 days for a damaged bag and within 21 days for a delayed one."
+  es: "En vuelos hacia, desde o dentro de Canadá, por una maleta perdida, dañada o retrasada la aerolínea te devuelve lo que pagaste por esa maleta y te indemniza según el Convenio de Montreal, hasta 1,519 DEG, también en vuelos nacionales. Una maleta que no aparece en más de 21 días cuenta como perdida. Reclama dentro de 7 días si llegó dañada y dentro de 21 si llegó tarde."
+  fr: "Sur les vols vers, depuis ou à l'intérieur du Canada, pour un bagage perdu, endommagé ou retardé, la compagnie rembourse les frais payés pour ce bagage et indemnise selon la Convention de Montréal, jusqu'à 1 519 DTS, aussi sur les vols intérieurs. Un bagage introuvable depuis plus de 21 jours est considéré comme perdu. Réclamez dans les 7 jours pour un bagage endommagé et dans les 21 jours pour un bagage retardé."
+applies_when:
+  all:
+    - any:
+        - { origin_country: CA }
+        - { destination_country: CA }
+        - { final_destination_country: CA }
+    - { disruption: { in: [bag_lost, bag_damaged, bag_delayed] } }
+amount_rules:
+  - { when: { disruption: { in: [bag_lost, bag_damaged, bag_delayed] } }, amount: { SDR: 1519 } }
+deadlines:
+  lost_after_days: 21
+  damaged_claim_days: 7
+  delayed_claim_days: 21
+tests:
+  - name: bag lost Toronto to Vancouver
+    facts: { as_of: 2026-11-20, origin_country: CA, destination_country: CA, disruption: bag_lost }
+    expect: applies
+    amount: { SDR: 1519 }
+  - name: Canada flight, problem not told
+    facts: { as_of: 2026-11-20, origin_country: CA, destination_country: CA }
+    expect: may_apply
+  - name: US domestic
+    facts: { as_of: 2026-11-20, origin_country: US, destination_country: US, final_destination_country: US, disruption: bag_lost }
+    expect: not_applies

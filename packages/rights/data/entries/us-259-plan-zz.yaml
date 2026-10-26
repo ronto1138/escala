@@ -1,0 +1,36 @@
+id: us-259-plan-zz
+jurisdiction: US
+instrument: 14 CFR 259.5(a) and the customer service plan of ZZ (fictitious airline; synthetic plan for this demo)
+article: "259.5"
+status: VERIFICADO
+source_url: https://www.ecfr.gov/current/title-14/chapter-II/subchapter-A/part-259
+verified_on: 2026-10-21
+summary:
+  en: "ZZ is a fictitious airline and this plan is synthetic, made for the demo. For causes within ZZ's control: a meal voucher if you wait 3 hours or more, hotel and transport if you are stuck overnight, and free rebooking on ZZ. Never cash. US rules make airlines keep the promises in their customer service plans."
+  es: "ZZ es una aerolínea ficticia y este plan es sintético, hecho para la demo. Por causas bajo el control de ZZ: vale de comida si esperas 3 horas o más, hotel y traslado si te quedas una noche, y cambio de vuelo sin costo en ZZ. Nunca efectivo. Las normas de EE. UU. obligan a cumplir lo que dice el plan de servicio de cada aerolínea."
+  fr: "ZZ est une compagnie fictive et ce plan est synthétique, créé pour la démo. Pour les causes qui dépendent de ZZ : un bon repas si vous attendez 3 heures ou plus, hôtel et transport si vous devez passer la nuit, et changement de vol gratuit sur ZZ. Jamais d'argent. Les règles américaines obligent les compagnies à tenir les engagements de leur plan de service."
+applies_when:
+  all:
+    - { operating_carrier: ZZ }
+    - any:
+        - { origin_country: US }
+        - { destination_country: US }
+    - { disruption: { in: [delay, cancellation] } }
+    - { cause_category: { in: [within_control, within_control_safety] } }
+deadlines:
+  meal_voucher_after_wait_h: 3
+ask_if_unknown:
+  cause_category:
+    en: "Did the airline tell you why the flight is late?"
+    es: "¿La aerolínea te dijo por qué se retrasó el vuelo?"
+    fr: "La compagnie vous a-t-elle dit pourquoi le vol est en retard ?"
+tests:
+  - name: ZZ crew shortage
+    facts: { operating_carrier: ZZ, origin_country: US, destination_country: US, disruption: delay, cause_category: within_control }
+    expect: applies
+  - name: ZZ delay, cause not told
+    facts: { operating_carrier: ZZ, origin_country: US, destination_country: US, disruption: delay }
+    expect: may_apply
+  - name: ZZ delay for weather
+    facts: { operating_carrier: ZZ, origin_country: US, destination_country: US, disruption: delay, cause_category: outside_control }
+    expect: not_applies

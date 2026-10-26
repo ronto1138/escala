@@ -1,0 +1,27 @@
+id: us-no-cash
+jurisdiction: US
+instrument: US DOT, withdrawal of the proposal on cash compensation (90 FR 51230, doc. 2025-20042)
+article: "ANPRM 89 FR 99760, withdrawn"
+status: VERIFICADO
+source_url: https://www.federalregister.gov/d/2025-20042
+verified_on: 2026-10-21
+summary:
+  en: "In the US no rule requires airlines to pay cash for a delay or cancellation: the 2024 proposal to require it was withdrawn in November 2025. What you can get comes from the refund rule and from the airline's own customer service plan."
+  es: "En EE. UU. ninguna norma obliga a las aerolíneas a pagar en efectivo por un retraso o una cancelación: la propuesta de 2024 se retiró en noviembre de 2025. Lo que puedes obtener viene de la regla de reembolso y del plan de servicio de la propia aerolínea."
+  fr: "Aux États-Unis, aucune règle n'oblige les compagnies à verser une indemnité en argent pour un retard ou une annulation : le projet de 2024 a été retiré en novembre 2025. Ce que vous pouvez obtenir vient de la règle de remboursement et du plan de service de la compagnie."
+applies_when:
+  all:
+    - any:
+        - { origin_country: US }
+        - { destination_country: US }
+    - { disruption: { in: [delay, cancellation] } }
+tests:
+  - name: US delay
+    facts: { origin_country: US, destination_country: US, disruption: delay }
+    expect: applies
+  - name: US trip, problem not told yet
+    facts: { origin_country: US, destination_country: US }
+    expect: may_apply
+  - name: Canada only
+    facts: { origin_country: CA, destination_country: CA, disruption: delay }
+    expect: not_applies

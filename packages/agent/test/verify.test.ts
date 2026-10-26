@@ -9,6 +9,9 @@ describe("number formats in three languages", () => {
     expect(parseNumber("3,5")).toBe(3.5);
     expect(parseNumber("3.5")).toBe(3.5);
     expect(parseNumber("400")).toBe(400);
+    expect(parseNumber("17,596.50")).toBe(17596.5);
+    expect(parseNumber("17.596,50")).toBe(17596.5);
+    expect(parseNumber("1 075,5")).toBe(1075.5);
   });
 
   it("finds amounts before or after the number, percentages and durations", () => {
@@ -101,5 +104,31 @@ describe("Muse Code re-audit (Oct 26): seven more bypasses, now closed", () => {
   it("still lets the legitimate answer through", () => {
     expect(verify("If ZZ caused it and you land 3 hours late or more, it's CAD 400.", allowed).ok).toBe(true);
     expect(verify("Sale a las 10:30 de la puerta K14 y es un vuelo de 3 h.", allowed).ok).toBe(true);
+  });
+});
+
+describe("rights base expansion (Oct 26)", () => {
+  it("an article number before a dash is not the start of a range", () => {
+    const values = extractClaims("Under art. 20 — 1,800 CAD, paid within 48 hours.").map((c) => c.value);
+    expect(values).toContain(1800);
+    expect(values).not.toContain(20);
+    expect(extractClaims("between 400-600 CAD").map((c) => c.value)).toEqual(expect.arrayContaining([400, 600]));
+  });
+
+  it("reads special drawing rights and UMA as units of money", () => {
+    expect(extractClaims("up to 1,519 SDR")[0]).toMatchObject({ kind: "amount", value: 1519, currency: "SDR" });
+    expect(extractClaims("hasta 150 UMA")[0]).toMatchObject({ kind: "amount", value: 150, currency: "UMA" });
+    expect(verify("up to 1,519 DTS", { amounts: [{ currency: "SDR", value: 1519 }], percents: [], durations: [] }).ok).toBe(true);
+  });
+});
+
+describe("battery (Oct 26): years and pesos", () => {
+  it("reads a four-digit number without separators as one number", () => {
+    expect(extractClaims("UMA 2026")[0]).toMatchObject({ value: 2026, currency: "UMA" });
+    expect(extractClaims("1,075 USD")[0]).toMatchObject({ value: 1075 });
+  });
+
+  it("accepts $ for an amount the rules give in Mexican pesos", () => {
+    expect(verify("unos $17,596.50", { amounts: [{ currency: "MXN", value: 17596.5 }], percents: [], durations: [] }).ok).toBe(true);
   });
 });

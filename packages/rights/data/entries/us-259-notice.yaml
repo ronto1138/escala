@@ -1,0 +1,30 @@
+id: us-259-notice
+jurisdiction: US
+instrument: 14 CFR Part 259 (Enhanced protections for airline passengers)
+article: "259.8"
+status: VERIFICADO
+source_url: https://www.ecfr.gov/current/title-14/chapter-II/subchapter-A/part-259
+verified_on: 2026-10-21
+summary:
+  en: "The airline must tell you about a cancellation, a diversion or a delay of 30 minutes or more within 30 minutes of learning about it."
+  es: "La aerolínea debe avisarte de una cancelación, un desvío o un retraso de 30 minutos o más dentro de los 30 minutos siguientes a que lo sepa."
+  fr: "La compagnie doit vous informer d'une annulation, d'un déroutement ou d'un retard de 30 minutes ou plus dans les 30 minutes qui suivent le moment où elle l'apprend."
+applies_when:
+  all:
+    - any:
+        - { origin_country: US }
+        - { destination_country: US }
+    - { disruption: { in: [delay, cancellation] } }
+deadlines:
+  notify_within_min: 30
+  delays_from_min: 30
+tests:
+  - name: US delay
+    facts: { origin_country: US, destination_country: US, disruption: delay }
+    expect: applies
+  - name: US trip, nothing told yet
+    facts: { origin_country: US }
+    expect: may_apply
+  - name: Mexico only
+    facts: { origin_country: MX, destination_country: MX, disruption: delay }
+    expect: not_applies
