@@ -21,6 +21,7 @@ export function loadScenario(path: string): Scenario {
 
 export interface FlightFeed {
   getFlight(flightId: string): FlightSnapshot | undefined;
+  findByIdent(ident: string): FlightSnapshot | undefined;
   getInbound(flightId: string): FlightSnapshot | undefined;
   subscribe(cb: (events: FlightEvent[], snapshot: FlightSnapshot) => void): () => void;
 }
@@ -60,6 +61,13 @@ export class ReplayFeed implements FlightFeed {
 
   getFlight(flightId: string) {
     return this.snapshots.get(flightId);
+  }
+
+  /** Latest observation of a flight by its number, e.g. "ZZ1234" or "ZZ 1234". */
+  findByIdent(ident: string): FlightSnapshot | undefined {
+    const want = ident.replace(/\s+/g, "").toUpperCase();
+    for (const s of this.snapshots.values()) if (s.ident.replace(/\s+/g, "").toUpperCase() === want) return s;
+    return undefined;
   }
 
   getInbound(flightId: string) {

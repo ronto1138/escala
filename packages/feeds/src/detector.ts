@@ -52,6 +52,11 @@ export function detect(
   return events;
 }
 
+/** Minutes of likely departure delay because the inbound aircraft is late; 0 if none or unknown. */
+export function inboundDelayMinutes(curr: FlightSnapshot, inbound: FlightSnapshot | undefined, minTurn = 45): number {
+  return inboundLate(curr, inbound, minTurn, curr.observedAt)?.likelyDepartureDelayMinutes ?? 0;
+}
+
 /**
  * The aircraft that will operate this flight is still on its previous flight. If it cannot land, reach
  * the gate and turn around before the scheduled departure, a delay is likely. This is an inference.
