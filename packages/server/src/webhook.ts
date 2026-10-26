@@ -1,0 +1,111 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { fromWebhook, verifySignature, type InboundMessage } from "@escala/channel";
+
+const MAX_BODY_BYTES = 1024 * 1024;
+const SEEN_LIMIT = 10_000;
+
+export interface WebhookOptions {
+  /** The token typed in the app's webhook settings; Meta sends it back once to verify the URL. */
+  verifyToken: string;
+  /** The app secret that signs every delivery (X-Hub-Signature-256). Without it, deliveries are refused. */
+  appSecret: string | undefined;
+  /** Each verified, new user message. Runs after the 200 is sent: Meta retries slow answers. */
+  deliver(m: InboundMessage): Promise<void>;
+  log?(event: Record<string, unknown>): void;
+}
+
+/** A short, non-reversible tag for logs: never the phone number itself. */
+export const tag = (id: string) => createHash("sha256").update(id).digest("hex").slice(0, 8);
+
+/**
+ * The WhatsApp webhook. Nothing is processed unless it is signed with the app secret; duplicate deliveries (Meta
+ * retries) are processed once; the body is capped. Logs carry no message content and no phone numbers.
+ */
+export function createWebhookHandler(opts: WebhookOptions) {
+  const log = opts.log ?? (() => {});
+  const seen = new Set<string>();
+  const remember = (id: string) => {
+    seen.add(id);
+    if (seen.size > SEEN_LIMIT) seen.delete(seen.values().next().value!);
+  };
+
+  return async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const url = new URL(req.url ?? "/", "http://localhost");
+    const reply = (status: number, body = "", type = "text/plain") => {
+      res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store" });
+      res.end(body);
+    };
+
+    if (url.pathname === "/health" && req.method === "GET") return reply(200, "ok");
+    if (url.pathname !== "/webhook") return reply(404);
+
+    if (req.method === "GET") {
+      const ok =
+        url.searchParams.get("hub.mode") === "subscribe" &&
+        sameSecret(url.searchParams.get("hub.verify_token") ?? "", opts.verifyToken);
+      log({ event: "verify", ok });
+      return ok ? reply(200, url.searchParams.get("hub.challenge") ?? "") : reply(403);
+    }
+    if (req.method !== "POST") return reply(405);
+    if (!opts.appSecret) {
+      log({ event: "refused", why: "no app secret configured" });
+      return reply(503);
+    }
+
+    let raw: Buffer;
+    try {
+      raw = await readBody(req, MAX_BODY_BYTES);
+    } catch {
+      return reply(413);
+    }
+    if (!verifySignature(opts.appSecret, raw, req.headers["x-hub-signature-256"] as string | undefined)) {
+      log({ event: "refused", why: "bad signature" });
+      return reply(401);
+    }
+    let payload: unknown;
+    try {
+      payload = JSON.parse(raw.toString("utf8"));
+    } catch {
+      return reply(400);
+    }
+    reply(200);
+
+    for (const m of fromWebhook(payload)) {
+      if (seen.has(m.id)) {
+        log({ event: "duplicate", from: tag(m.from) });
+        continue;
+      }
+      remember(m.id);
+      log({ event: "inbound", from: tag(m.from), kind: m.kind });
+      try {
+        await opts.deliver(m);
+      } catch (err) {
+        log({ event: "error", from: tag(m.from), error: String(err).slice(0, 200) });
+      }
+    }
+  };
+}
+
+function sameSecret(given: string, expected: string): boolean {
+  if (!expected) return false;
+  const a = createHash("sha256").update(given).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
+}
+
+function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size > limit) {
+        reject(new Error("too large"));
+        req.destroy();
+      } else chunks.push(c);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
