@@ -1,102 +1,138 @@
 import { describe, expect, it } from "vitest";
 import { SimChannel, validateOutbound, type OutboundMessage } from "@escala/channel";
-import { Conversation, detectLang, LANGS, T, type ExtractedTrip } from "../src/index.ts";
+import { Conversation, detectLang, keywordIntent, LANGS, T, type ExtractedTrip } from "../src/index.ts";
 
 const trip: ExtractedTrip = {
-  lines: ["ZZ 1234 · Nov 2 · Austin 7:10 → Chicago 9:35", "ZZ 567 · Nov 2 · Chicago 10:30 → Montreal 13:40"],
+  lines: ["ZZ 1234 · lun 2 nov · Austin 07:10 → Chicago 09:35", "ZZ 567 · lun 2 nov · Chicago 10:30 → Montreal 13:40"],
   trip: { legs: 2 },
 };
 
-function setup() {
-  const sim = new SimChannel();
+function setup(start = Date.parse("2026-11-01T15:00:00Z")) {
+  let now = start;
+  const sim = new SimChannel(() => now);
+  const corrections: string[] = [];
   const confirmed: string[] = [];
   const conv = new Conversation({
     channel: sim,
-    extractItinerary: async (m) => (m.kind === "image" || (m.kind === "text" && /ZZ/.test(m.text)) ? trip : null),
+    extractItinerary: async (m, _p, correction) => {
+      if (correction) corrections.push(correction);
+      if (m.kind === "image") return trip;
+      if (m.kind === "text" && (/\bZZ\s?\d+/.test(m.text) || correction)) return trip;
+      return null;
+    },
     onTripConfirmed: async (p) => void confirmed.push(p.id),
   });
   const out = () => sim.transcript.filter((e) => e.direction === "out").map((e) => e.message as OutboundMessage);
-  return { sim, conv, out, confirmed };
+  const lastText = () => {
+    const m = out().at(-1);
+    return m && "text" in m ? m.text : "";
+  };
+  return { sim, conv, out, lastText, corrections, confirmed, advance: (ms: number) => void (now += ms) };
 }
 
-describe("every user-facing message fits WhatsApp's limits in all three languages", () => {
+describe("copy fits WhatsApp in all three languages", () => {
   it.each(LANGS)("%s", (lang) => {
     const t = T[lang];
-    const msgs: OutboundMessage[] = [
-      { kind: "text", text: t.welcome },
-      { kind: "buttons", text: t.shareQuestion, buttons: [{ id: "a", title: t.shareButtons.trip }, { id: "b", title: t.shareButtons.remember }, { id: "c", title: t.shareButtons.details }] },
-      { kind: "buttons", text: t.itinerarySummary(trip.lines), buttons: [{ id: "a", title: t.confirmButtons.ok }, { id: "b", title: t.confirmButtons.fix }, { id: "c", title: t.confirmButtons.menu }] },
-      { kind: "list", text: t.menuText, buttonLabel: t.menuButton, sections: t.menuSections },
-    ];
-    for (const m of msgs) expect(validateOutbound(m)).toEqual([]);
-    expect(t.menuSections.flatMap((s) => s.rows)).toHaveLength(10);
+    for (const text of [t.hello, t.welcomeBack, t.shareQuestion, t.privacy, t.itinerarySummary(trip.lines), t.confirmed, t.stopped]) {
+      expect(validateOutbound({ kind: "text", text })).toEqual([]);
+    }
+    expect(validateOutbound({ kind: "list", text: t.menuText, buttonLabel: t.menuButton, sections: t.menuSections })).toEqual([]);
   });
 
-  it("uses the same menu row ids in every language", () => {
-    const ids = (l: (typeof LANGS)[number]) => T[l].menuSections.flatMap((s) => s.rows.map((r) => r.id));
-    expect(ids("es")).toEqual(ids("en"));
-    expect(ids("fr")).toEqual(ids("en"));
+  it("keeps the first message short (two short paragraphs) and says it is an AI", () => {
+    for (const lang of LANGS) {
+      expect(T[lang].hello.length).toBeLessThan(380);
+      expect(T[lang].hello).toMatch(/AI|inteligencia artificial|intelligence artificielle/);
+    }
   });
 });
 
-describe("language of the greeting", () => {
-  it("guesses from the first message and defaults to English", () => {
-    expect(detectLang("Hola, ¿cómo funciona?")).toBe("es");
-    expect(detectLang("Bonjour, est-ce que ça marche ?")).toBe("fr");
-    expect(detectLang("hi")).toBe("en");
+describe("reading short answers in words", () => {
+  it("understands yes, no, remember and just-this-trip without buttons", () => {
+    expect(keywordIntent("Sí, está bien", "es")).toBe("yes");
+    expect(keywordIntent("sí, acuérdate de mí", "es")).toBe("remember");
+    expect(keywordIntent("just this trip please", "en")).toBe("trip_only");
+    expect(keywordIntent("Non, ce n'est pas ça", "fr")).toBe("no");
+    expect(keywordIntent("el 2 de noviembre", "es")).toBe("other"); // "no" inside "noviembre" is not a no
+  });
+
+  it("guesses the greeting language from the first message", () => {
+    expect(detectLang("Hola, ¿me ayudas con mi viaje?")).toBe("es");
+    expect(detectLang("Bonjour, c'est pour mon voyage")).toBe("fr");
+    expect(detectLang("hey")).toBe("en");
   });
 });
 
-describe("onboarding", () => {
-  it("introduces itself as an AI, asks how much to share, reads the itinerary and never asks for it twice", async () => {
-    const { sim, conv, out, confirmed } = setup();
+describe("first contact", () => {
+  it("introduces itself briefly, asks in words, and never shows buttons unless asked", async () => {
+    const { sim, conv, out, lastText, confirmed } = setup();
     const sam = "15550001111";
 
-    await sim.userSends(sam, { kind: "text", text: "hi" });
-    expect((out()[0] as any).text).toMatch(/I'm Escala: an AI/);
-    expect((out()[0] as any).text).toMatch(/no one on our team reads it/);
-    expect(out()[1]).toMatchObject({ kind: "buttons" });
-    expect(conv.people.get(sam)?.share).toBe("trip"); // most private by default
+    await sim.userSends(sam, { kind: "text", text: "Hola, ¿me ayudas con mi viaje?" });
+    expect(out().map((m) => m.kind)).toEqual(["text", "text"]);
+    expect((out()[0] as any).text).toBe(T.es.hello);
+    expect(lastText()).toBe(T.es.shareQuestion);
 
-    await sim.userSends(sam, { kind: "interactive", replyId: "share.remember", title: "Remember me" });
+    await sim.userSends(sam, { kind: "text", text: "Sí, acuérdate de mí" });
     expect(conv.people.get(sam)?.share).toBe("profile");
-    expect((out().at(-1) as any).text).toMatch(/won't ask you for it again/);
+    expect(lastText()).toBe(T.es.askItinerary);
 
     await sim.userSends(sam, { kind: "image", mediaId: "m1", mimeType: "image/png" });
-    expect(out().at(-1)).toMatchObject({ kind: "buttons" });
-    expect((out().at(-1) as any).text).toContain("ZZ 567");
+    expect(lastText()).toContain("ZZ 567");
 
-    await sim.userSends(sam, { kind: "interactive", replyId: "confirm.ok", title: "Correct, alert me" });
+    await sim.userSends(sam, { kind: "text", text: "sí, está bien" });
     expect(conv.people.get(sam)?.stage).toBe("ready");
     expect(confirmed).toEqual([sam]);
-    const asks = out().filter((m) => m.kind === "text" && m.text === T.en.askItinerary);
-    expect(asks).toHaveLength(1);
+    expect(out().every((m) => m.kind === "text")).toBe(true); // no buttons, no lists
   });
 
-  it("says plainly when it cannot read a trip", async () => {
-    const { sim, out } = setup();
-    await sim.userSends("1", { kind: "text", text: "hola, ¿qué tal?" });
-    await sim.userSends("1", { kind: "interactive", replyId: "share.trip", title: "Solo este viaje" });
-    await sim.userSends("1", { kind: "text", text: "mi viaje es la próxima semana" });
-    expect((out().at(-1) as any).text).toBe(T.es.notReadable);
+  it("accepts the itinerary as the very first message and asks about memory only afterwards", async () => {
+    const { sim, conv, out, lastText } = setup();
+    await sim.userSends("2", { kind: "image", mediaId: "m1", mimeType: "image/png" });
+    expect((out()[0] as any).text).toBe(T.en.hello);
+    expect(lastText()).toContain("ZZ 1234");
+    await sim.userSends("2", { kind: "text", text: "yes, perfect" });
+    expect(conv.people.get("2")?.stage).toBe("ready");
+    expect(lastText()).toBe(T.en.shareQuestion);
+  });
+
+  it("takes a correction in the person's own words", async () => {
+    const { sim, lastText, corrections } = setup();
+    await sim.userSends("3", { kind: "image", mediaId: "m1", mimeType: "image/png" });
+    await sim.userSends("3", { kind: "text", text: "no, el regreso es el sábado 7, no el viernes" });
+    expect(corrections).toEqual(["no, el regreso es el sábado 7, no el viernes"]);
+    expect(lastText()).toContain("¿Está bien?");
   });
 });
 
-describe("navigation", () => {
-  it("opens the main menu from anywhere, in the person's language", async () => {
-    const { sim, out } = setup();
-    await sim.userSends("2", { kind: "text", text: "Bonjour, mon vol" });
-    await sim.userSends("2", { kind: "text", text: "Menu" });
+describe("people Escala already knows", () => {
+  it("only says hello again, with the reminder, after a day away", async () => {
+    const { sim, out, advance } = setup();
+    await sim.userSends("4", { kind: "text", text: "Hello" });
+    await sim.userSends("4", { kind: "text", text: "just this trip" });
+    advance(30 * 60 * 60 * 1000);
+    await sim.userSends("4", { kind: "text", text: "hi, is my flight on time?" });
+    const texts = out().map((m) => (m as any).text as string);
+    expect(texts.filter((t) => t === T.en.hello)).toHaveLength(1);
+    expect(texts).toContain(T.en.welcomeBack);
+  });
+});
+
+describe("on request only", () => {
+  it("shows the menu and the full privacy note when asked", async () => {
+    const { sim, out, lastText } = setup();
+    await sim.userSends("5", { kind: "text", text: "Bonjour, c'est pour mon voyage" });
+    await sim.userSends("5", { kind: "text", text: "menu" });
     expect(out().at(-1)).toMatchObject({ kind: "list", buttonLabel: "Ouvrir le menu" });
+    await sim.userSends("5", { kind: "text", text: "confidentialité" });
+    expect(lastText()).toBe(T.fr.privacy);
   });
 
-  it("STOP stops everything; writing again starts over", async () => {
-    const { sim, conv, out } = setup();
-    await sim.userSends("3", { kind: "text", text: "hi" });
-    await sim.userSends("3", { kind: "text", text: "STOP" });
-    expect(conv.people.get("3")?.stage).toBe("stopped");
-    expect((out().at(-1) as any).text).toMatch(/won't send you any more messages/);
-    await sim.userSends("3", { kind: "text", text: "hi again" });
-    expect((out().at(-2) as any).text).toMatch(/I'm Escala/);
+  it("STOP stops everything", async () => {
+    const { sim, conv, lastText } = setup();
+    await sim.userSends("6", { kind: "text", text: "hi" });
+    await sim.userSends("6", { kind: "text", text: "STOP" });
+    expect(conv.people.get("6")?.stage).toBe("stopped");
+    expect(lastText()).toBe(T.en.stopped);
   });
 });
