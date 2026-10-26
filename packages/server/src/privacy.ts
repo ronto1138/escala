@@ -53,7 +53,7 @@ your rights as a passenger, and plans on the way. It is in an early test phase.<
   <li><strong>Preferences for future trips</strong> are kept only if you ask Escala to remember you, and are deleted if you change your mind.</li>
 </ul>
 
-<h2>Your controls</h2>
+<h2 id="delete">Your controls: see, correct or delete your data</h2>
 <ul>
   <li>Ask <em>"What do you know about me?"</em> to see what Escala keeps and where each fact came from.</li>
   <li>Say <em>"Forget …"</em> to delete one thing, or <em>"Delete everything"</em> (<em>"Borra todo"</em>, <em>"Efface tout"</em>) to delete all of it.</li>

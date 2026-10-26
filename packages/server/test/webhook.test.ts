@@ -164,5 +164,6 @@ describe("privacy policy page", () => {
     expect(html).toContain("Kokorio, S.A.P.I. de C.V.");
     expect(html).toMatch(/not end-to-end encrypted/);
     expect(html).toMatch(/Delete everything/);
+    expect(html).toContain(`id="delete"`); // the data deletion URL given to Meta points here
   });
 });
