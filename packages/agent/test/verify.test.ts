@@ -81,3 +81,25 @@ describe("Muse Code audit (Oct 26): verifier bypasses that must stay closed", ()
     expect(verify("600\nCAD", allowed).ok).toBe(false);
   });
 });
+
+describe("Muse Code re-audit (Oct 26): seven more bypasses, now closed", () => {
+  const allowed = { amounts: [{ currency: "CAD", value: 400 }], percents: [], durations: [3] };
+  it.each([
+    "Your compensation is 600 pounds.",
+    "You get 25 per cent of the ticket price back.",
+    "You have 90 seconds to decide.",
+    "You are owed thirteen dollars.",
+    "Te tocan trece dólares.",
+    "Vous avez droit à treize euros.",
+    "You are owed 600-CAD under the rules.",
+    "You are owed 600(CAD) under the rules.",
+    "We pay CAD 400 or 600 depending on the case.",
+  ])("%s", (draft) => {
+    expect(verify(draft, allowed).ok).toBe(false);
+  });
+
+  it("still lets the legitimate answer through", () => {
+    expect(verify("If ZZ caused it and you land 3 hours late or more, it's CAD 400.", allowed).ok).toBe(true);
+    expect(verify("Sale a las 10:30 de la puerta K14 y es un vuelo de 3 h.", allowed).ok).toBe(true);
+  });
+});
