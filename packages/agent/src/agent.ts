@@ -2,6 +2,7 @@ import type { InboundMessage, OutboundMessage } from "@escala/channel";
 import type { ConversationDeps, ExtractedTrip, Lang, Person } from "@escala/conversation";
 import { arrivalMinutesLate, inboundDelayMinutes, type FlightFeed } from "@escala/feeds";
 import { outputText, type MetaClient } from "@escala/meta-client";
+import { ConsentError, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
 import { legLine } from "./format.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
@@ -13,6 +14,8 @@ export interface AgentDeps {
   feed: FlightFeed;
   entries: RightEntry[];
   media: MediaLoader;
+  /** Encrypted memory with provenance. Optional: without it Escala remembers nothing between messages. */
+  memory?: MemoryStore;
   /** Called with each step, for the trust panel. */
   trace?: (step: TraceStep) => void;
   maxToolRounds?: number;
@@ -33,10 +36,17 @@ const DECLINE: Record<Lang, (reasons: string) => string> = {
 };
 
 const FALLBACK: Record<Lang, string> = {
-  en: "I'd rather not give you a number I can't back with a source. Here's what I can say for sure: I'm checking your flights, and I'll tell you what applies as soon as I can cite the rule.",
-  es: "Prefiero no darte una cifra que no pueda respaldar con una fuente. Lo que sí te puedo decir: estoy revisando tus vuelos y te digo qué te corresponde en cuanto pueda citarte la norma.",
-  fr: "Je préfère ne pas vous donner un chiffre que je ne peux pas appuyer sur une source. Ce que je peux dire : je surveille vos vols et je vous dirai ce qui s'applique dès que je pourrai citer la règle.",
+  en: "I'd rather not give you a figure I can't back with a source, so let me check again. Could you ask me once more in a moment?",
+  es: "Prefiero no darte una cifra que no pueda respaldar con una fuente, así que déjame revisarlo otra vez. ¿Me lo preguntas de nuevo en un momento?",
+  fr: "Je préfère ne pas vous donner un chiffre que je ne peux pas appuyer sur une source ; je vérifie à nouveau. Pouvez-vous me reposer la question dans un instant ?",
 };
+
+/**
+ * Seeing, changing or deleting what Escala keeps about the person is always in scope, whatever trip it came from:
+ * it is the person's right, not a travel topic. Checked before the model-based guard.
+ */
+const MEMORY_REQUEST =
+  /\b(forget|delete|erase|what do you know|what you know|what you remember|olvida|olvides|borra|bórra|qué sabes|que sabes|qué recuerdas|que recuerdas|oublie|oubliez|efface|effacez|que savez-vous|ce que vous savez)\b/i;
 
 const TOOLS = [
   {
@@ -48,6 +58,44 @@ const TOOLS = [
       additionalProperties: false,
       required: ["flight"],
       properties: { flight: { type: "string", description: "e.g. ZZ1234" } },
+    },
+    strict: true,
+  },
+  {
+    type: "function",
+    name: "remember",
+    description:
+      "Remember something useful for this trip or, only if the traveler turned memory on, for future trips. Quote the traveler's own words. " +
+      "Use for travel habits and preferences (bags, connections, seats, who to tell, places they liked), never for health, religion, politics or other sensitive data.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["scope", "topic", "statement", "quote"],
+      properties: {
+        scope: { type: "string", enum: ["trip", "profile"] },
+        topic: { type: "string", description: "short key, e.g. bag.checked, connection.preference, companion, place.liked" },
+        statement: { type: "string", description: "one plain sentence in the traveler's language" },
+        quote: { type: "string", description: "the traveler's words this comes from" },
+      },
+    },
+    strict: true,
+  },
+  {
+    type: "function",
+    name: "what_i_know",
+    description: "Everything remembered about this traveler, with where each fact came from. Use when they ask what you know about them.",
+    parameters: { type: "object", additionalProperties: false, required: [], properties: {} },
+    strict: true,
+  },
+  {
+    type: "function",
+    name: "forget",
+    description: "Forget one remembered fact (by id), a topic, or everything, when the traveler asks.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["fact_id", "topic", "everything"],
+      properties: { fact_id: { type: ["string", "null"] }, topic: { type: ["string", "null"] }, everything: { type: "boolean" } },
     },
     strict: true,
   },
@@ -86,11 +134,19 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
     return { lines: trip.legs.map((l) => legLine(l, p.lang)), trip };
   }
 
+  let currentMessage = { id: "", at: "" };
+  let messageId = "";
+  let messageAt = "";
+
   async function agent(m: InboundMessage, p: Person): Promise<OutboundMessage[]> {
     if (m.kind !== "text") return []; // voice notes and photos are handled by their own flows
+    messageId = m.id;
+    messageAt = m.at;
     const trip = p.trip as Trip | undefined;
 
-    const parts = await scopeGuard(deps.client, m.text, trip, p.lang);
+    const parts = MEMORY_REQUEST.test(m.text)
+      ? [{ text: m.text, in_scope: true, reason: "request about the traveler's own memory" }]
+      : await scopeGuard(deps.client, m.text, trip, p.lang);
     trace({ kind: "scope", parts });
     const inScope = parts.filter((x) => x.in_scope);
     const outScope = parts.filter((x) => !x.in_scope);
@@ -105,15 +161,34 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
   }
 
   async function answer(question: string, p: Person, trip: Trip | undefined, allowed: Allowed): Promise<string> {
-    const tripText = trip ? journeys(trip).map((j) => j.map((l) => legLine(l, "en")).join(" | ")).join(" ;; ") : "no itinerary yet";
+    const tripText = trip
+      ? journeys(trip)
+          .map((j) => j.map((l, i) => (i > 0 ? `[connection ${layoverMin(j[i - 1]!, l)} min] ` : "") + legLine(l, "en")).join(" | "))
+          .join(" ;; ")
+      : "no itinerary yet";
+    // Numbers that come from the itinerary itself (connection times) are facts the answer may repeat.
+    if (trip) for (const j of journeys(trip)) j.slice(1).forEach((l, i) => allowed.durations.push(layoverMin(j[i]!, l)));
+    const learned = deps.memory && p.share === "profile" ? deps.memory.recall(p.id, { scope: "profile" }) : [];
+    const memoryText = learned.length
+      ? ` What you have learned about this traveler (when you use one, say in ${LANG_NAME[p.lang]} when the traveler told you, e.g. "in March you…"; never copy the brackets or the source notes): ${learned
+          .slice(0, 20)
+          .map((f) => `[${f.topic}] ${f.statement} (told on ${f.source.at.slice(0, 10)})`)
+          .join("; ")}.`
+      : "";
+    for (const f of learned) numbersInText(f.statement).forEach((n) => allowed.durations.push(n));
     const instructions =
       `You are Escala, a warm, plain-spoken travel companion on WhatsApp, for this traveler's trip only. Reply in ${LANG_NAME[p.lang]}, briefly, like a person who knows travel. ` +
       "Use tools for facts; never guess flight status. Never state an amount, percentage, deadline or legal article unless rights_for_trip returned it under 'applies'. " +
       "If a right only 'may apply', say what it depends on and ask the single question returned, nothing else. If the inbound aircraft is late, say it is your inference, not airline data. " +
       "You give information with sources, not legal advice; never promise compensation. Never book anything. " +
-      `Trip: ${tripText}.`;
+      `Trip: ${tripText}.` +
+      (deps.memory
+        ? ` When the traveler shares a useful habit or preference, call remember with their own words: scope "profile" for habits and preferences that matter on future trips${p.share === "profile" ? "" : " (they have not turned that on, so use \"trip\")"}, scope "trip" for what only matters now.`
+        : "") +
+      memoryText;
 
     const input: any[] = [{ role: "user", content: question }];
+    currentMessage = { id: messageId, at: messageAt };
     for (let round = 0; round < (deps.maxToolRounds ?? 4); round++) {
       const r = await deps.client.responses(
         { model: "muse-spark-1.3", reasoning: { effort: "low" }, max_output_tokens: 1500, instructions, input, tools: TOOLS as unknown as unknown[] },
@@ -188,6 +263,38 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
         inbound_aircraft_inference: inboundMin > 0 ? { likely_departure_delay_minutes: inboundMin, note: "inference from the inbound aircraft, not airline data" } : null,
       };
     }
+    if (name === "remember") {
+      if (!deps.memory) return { error: "memory is not available" };
+      try {
+        const f = deps.memory.remember(p.id, {
+          scope: args.scope === "profile" ? "profile" : "trip",
+          topic: String(args.topic).slice(0, 60),
+          statement: String(args.statement).slice(0, 300),
+          source: { kind: "message", ref: currentMessage.id, at: currentMessage.at, quote: String(args.quote).slice(0, 200) },
+        });
+        return { remembered: f.id, scope: f.scope };
+      } catch (err) {
+        if (err instanceof ConsentError) return { not_remembered: "the traveler has not turned on memory for future trips; keep it for this trip only" };
+        throw err;
+      }
+    }
+    if (name === "what_i_know") {
+      if (!deps.memory) return { facts: [] };
+      const facts = deps.memory.recall(p.id);
+      for (const f of facts) numbersInText(f.statement).forEach((n) => allowed.durations.push(n));
+      return {
+        sharing: deps.memory.settings(p.id).share,
+        facts: facts.map((f) => ({ id: f.id, scope: f.scope, statement: f.statement, from: `${f.source.kind}, ${f.source.at.slice(0, 10)}`, quote: f.source.quote ?? null })),
+      };
+    }
+    if (name === "forget") {
+      if (!deps.memory) return { forgotten: 0 };
+      const given = (v: unknown) => (typeof v === "string" && v !== "" && v !== "null" ? v : undefined); // models sometimes write null as text
+      const factId = given(args.fact_id);
+      const topic = given(args.topic);
+      const n = args.everything === true ? deps.memory.forget(p.id, "all") : factId ? deps.memory.forget(p.id, { factId }) : topic ? deps.memory.forget(p.id, { topic }) : 0;
+      return { forgotten: n };
+    }
     if (name === "rights_for_trip") {
       if (!trip) return { error: "no itinerary yet" };
       const facts: TripFacts = { ...factsFor(trip, args.flight) };
@@ -237,6 +344,16 @@ function cite(e: RightEntry, lang: Lang, amount?: Record<string, number>) {
     ...(e.deadlines ? { deadlines: e.deadlines } : {}),
     status: e.status,
   };
+}
+
+/** Minutes on the ground between two legs, computed from the itinerary (local times; same airport). */
+function layoverMin(a: { date: string; arr_local: string }, b: { date: string; dep_local: string }): number {
+  return Math.round((Date.parse(`${b.date}T${b.dep_local}:00Z`) - Date.parse(`${a.date}T${a.arr_local}:00Z`)) / 60000);
+}
+
+/** Numbers written in a remembered statement, so the answer may repeat them ("a 50-minute connection"). */
+function numbersInText(s: string): number[] {
+  return [...s.matchAll(/\d+(?:[.,]\d+)?/g)].map((m) => Number(m[0].replace(",", ".")));
 }
 
 /** ISO UTC time -> "YYYY-MM-DD HH:MM" in the airport's time zone. */

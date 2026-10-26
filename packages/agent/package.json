@@ -3,12 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "dependencies": {
     "@escala/channel": "0.1.0",
     "@escala/conversation": "0.1.0",
     "@escala/feeds": "0.1.0",
     "@escala/meta-client": "0.1.0",
-    "@escala/rights": "0.1.0"
+    "@escala/rights": "0.1.0",
+    "@escala/memory": "0.1.0"
   }
 }

@@ -39,6 +39,8 @@ export interface ConversationDeps {
   onTripConfirmed?(person: Person): Promise<void>;
   /** Erase everything kept about this person (memory, trips, case files). */
   onDelete?(id: ParticipantId): Promise<void>;
+  /** The person chose how much to remember: "trip" (default) or "profile". */
+  onShareChanged?(person: Person): Promise<void>;
 }
 
 const DELETED: Record<Lang, string> = {
@@ -115,6 +117,7 @@ export class Conversation {
       if (intent === "remember" || intent === "trip_only" || intent === "no") {
         p.share = intent === "remember" ? "profile" : "trip";
         p.awaiting = null;
+        await this.deps.onShareChanged?.(p);
         await this.say(p, p.share === "profile" ? T[p.lang].sharedProfile : T[p.lang].sharedTrip);
         if (!p.trip && !p.pending) return this.say(p, T[p.lang].askItinerary);
         return;
