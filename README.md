@@ -9,7 +9,27 @@ when Escala does not know, it says so.
 Built for the **Meta Global AI Developer Hackathon** (Oct 26 – Nov 4, 2026), theme *Build for Your World*,
 with Meta's models through the Meta Model API.
 
-> Status: **Day 1.** Nothing here is functional yet. This README grows as the project does.
+> Status: **Day 1 (Oct 26).** The demo trip runs end to end in a local WhatsApp simulator with Muse Spark:
+> itinerary from a screenshot, flight watching with the inbound-aircraft inference, passenger rights decided by
+> rules, every figure checked before it is sent. The real WhatsApp number and the trust panel come next.
+
+## What's inside
+
+| Package | What it does |
+|---|---|
+| `meta-client` | Meta Model API over `fetch`: `store: false` on every call, model allowlist (Standard only), capped retries, one usage line per call with tokens, latency and cost |
+| `rights` | Passenger rights as declarative rules with three-valued logic: an entry *applies*, *may apply* (and depends on one fact worth asking) or *does not apply* (and says why). Validity windows keep reforms out until they apply |
+| `feeds` | Flight data: a replay feed of synthetic scenarios in the AeroAPI v4 shape, and a change detector that infers delays from a late inbound aircraft, always flagged as an inference |
+| `channel` | WhatsApp Cloud API payloads checked against platform limits, webhook signature verification, and a simulator with the same rules, including the 24-hour window |
+| `conversation` | Conversation first: people say what they need in their own words; a short first-contact introduction; the menu only on request |
+| `agent` | Muse Spark with tools (flight status, rights for this trip), a scope guard that keeps every answer on the trip, and a deterministic verifier that blocks any amount, percentage or deadline the rules did not produce |
+
+## Run the tests
+
+```
+npm ci
+npm run check
+```
 
 ## What existed before the event
 
