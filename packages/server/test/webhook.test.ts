@@ -167,3 +167,24 @@ describe("privacy policy page", () => {
     expect(html).toContain(`id="delete"`); // the data deletion URL given to Meta points here
   });
 });
+
+describe("spending limits (audit Oct 26)", () => {
+  it("caps messages per person per hour, media lower, and stops everything past the daily budget", async () => {
+    const { Budget } = await import("../src/budget.ts");
+    let now = Date.parse("2026-11-02T12:00:00Z");
+    const b = new Budget({ perPersonHour: 3, mediaPerPersonHour: 1, dailyUsd: 1, now: () => now });
+    expect(b.allow("a", "media")).toBe(true);
+    expect(b.allow("a", "media")).toBe(false); // one photo or voice note per hour here
+    expect(b.allow("a", "text")).toBe(true);
+    expect(b.allow("a", "text")).toBe(true);
+    expect(b.allow("a", "text")).toBe(false); // three messages in total
+    expect(b.allow("b", "text")).toBe(true); // other people are not affected
+    now += 3_600_001;
+    expect(b.allow("a", "text")).toBe(true);
+    b.spend(1.2);
+    expect(b.allow("c", "text")).toBe(false);
+    expect(b.why("c")).toBe("daily budget");
+    now += 24 * 3_600_000;
+    expect(b.allow("c", "text")).toBe(true); // a new day
+  });
+});

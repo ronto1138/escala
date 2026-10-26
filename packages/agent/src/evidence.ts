@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Lang } from "@escala/conversation";
 import { outputText, type MetaClient } from "@escala/meta-client";
+import { scrub } from "./agent.ts";
 
 /**
  * Evidence photos: the state of a checked bag or a rental car, recorded when the traveler sends a photo. Muse Spark
@@ -64,11 +65,13 @@ export async function readEvidence(
   const j = JSON.parse(outputText(r));
   const reading: EvidenceReading = {
     object: j.object,
-    description: String(j.description ?? ""),
-    visibleDamage: (j.visible_damage ?? []).map(String),
+    description: scrub(String(j.description ?? "")).slice(0, 300),
+    visibleDamage: (j.visible_damage ?? []).slice(0, 10).map((x: unknown) => scrub(String(x)).slice(0, 160)),
     marks: {},
     photoSha256,
-    ...(j.object !== "other" && earlier[j.object as EvidenceObject] ? { newDamage: (j.new_damage ?? []).map(String) } : {}),
+    ...(j.object !== "other" && earlier[j.object as EvidenceObject]
+      ? { newDamage: (j.new_damage ?? []).slice(0, 10).map((x: unknown) => scrub(String(x)).slice(0, 160)) }
+      : {}),
   };
   if (reading.object === "other") return reading;
   for (const concept of MARK_CONCEPTS) reading.marks[concept] = await countMarks(client, imageDataUrl, concept);

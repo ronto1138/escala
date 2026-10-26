@@ -5,7 +5,7 @@ import { mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AIRPORTS, createEscalaAgent } from "@escala/agent";
+import { AIRPORTS, createEscalaAgent, longestDeadlineDays } from "@escala/agent";
 import type { InboundMessage } from "@escala/channel";
 import { Conversation } from "@escala/conversation";
 import { loadScenario, ReplayFeed } from "@escala/feeds";
@@ -13,6 +13,7 @@ import { MemoryCrypto, MemoryStore } from "@escala/memory";
 import { createMetaClient, fileSink, type UsageLine } from "@escala/meta-client";
 import { loadEntries } from "@escala/rights";
 import { toWav, tripKeywords } from "./audio.ts";
+import { Budget } from "./budget.ts";
 import { CloudApiChannel } from "./cloud.ts";
 import { createWebhookHandler, tag } from "./webhook.ts";
 
@@ -31,20 +32,29 @@ const channel = new CloudApiChannel({
 });
 // Usage lines (tokens, cost; never content) go to a file and to the log, so they can be collected from the host.
 const usageFile = fileSink(env.USAGE_LOG ?? "usage.jsonl");
-const usage = { write: async (line: UsageLine) => { log({ event: "usage", ...line }); await usageFile.write(line); } };
+const budget = new Budget({
+  perPersonHour: Number(env.LIMIT_MESSAGES_PER_HOUR ?? 30),
+  mediaPerPersonHour: Number(env.LIMIT_MEDIA_PER_HOUR ?? 10),
+  dailyUsd: Number(env.LIMIT_DAILY_USD ?? 5),
+});
+const usage = {
+  write: async (line: UsageLine) => {
+    budget.spend(line.cost_usd);
+    log({ event: "usage", ...line });
+    await usageFile.write(line);
+  },
+};
 const client = createMetaClient({ apiKey: need("META_API_KEY"), usage, timeoutMs: 90_000 });
 const dbPath = env.MEMORY_DB ?? "data/memory.db";
 mkdirSync(dirname(dbPath), { recursive: true });
 const memory = new MemoryStore({ path: dbPath, crypto: MemoryCrypto.fromEnv() });
 // Retention is enforced, not just promised: expired facts are deleted at start and every hour.
-const purge = () => log({ event: "purge", deleted: memory.purgeExpired() });
-purge();
-setInterval(purge, 60 * 60 * 1000).unref();
+const claimDays = longestDeadlineDays(loadEntries());
 const scenario = fileURLToPath(new URL("../../feeds/scenarios/demo-inbound-late.yaml", import.meta.url));
 const feed = new ReplayFeed(loadScenario(scenario));
 
 const escala = createEscalaAgent({ client, feed, entries: loadEntries(), media: channel, memory });
-new Conversation({
+const conversation = new Conversation({
   channel,
   extractItinerary: escala.extractItinerary,
   agent: escala.agent!,
@@ -52,7 +62,9 @@ new Conversation({
   transcribe: async (m, p) => {
     try {
       const dataUrl = await channel.dataUrl(m.mediaId, m.mimeType);
-      const wav = await toWav(Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"));
+      const match = /^data:[\w.+-]+\/[\w.+-]+;base64,/.exec(dataUrl);
+      if (!match) throw new Error("media is not a base64 data URL");
+      const wav = await toWav(Buffer.from(dataUrl.slice(match[0].length), "base64"));
       const keywords = tripKeywords(p?.trip, (code) => AIRPORTS[code]?.city);
       return (await client.transcribe(wav, { keywords }, { caller: "voice/transcribe" })).text || null;
     } catch (err) {
@@ -67,17 +79,35 @@ new Conversation({
   },
 });
 
-// One person's messages are handled in order; different people in parallel. Capped so a flood cannot exhaust memory.
+// Retention for what lives in this process and in the database, hourly. A failure is logged and retried next hour.
+const sweep = () => {
+  try {
+    log({ event: "purge", deleted: memory.purgeExpired(), forgotten: conversation.evict(Date.now(), claimDays) });
+    escala.sweep();
+  } catch (err) {
+    log({ event: "error", why: "purge", error: String(err).slice(0, 120) });
+  }
+};
+sweep();
+setInterval(sweep, 60 * 60 * 1000).unref();
+
+// One person's messages are handled in order; different people in parallel. Capped so a flood cannot exhaust memory,
+// and every message passes the spending limits first (per person and per day for the whole service).
 const MAX_QUEUES = 500;
+const MAX_PENDING_PER_PERSON = 5;
 const queues = new Map<string, Promise<void>>();
+const pending = new Map<string, number>();
 const deliver = (m: InboundMessage) => {
-  if (!queues.has(m.from) && queues.size >= MAX_QUEUES) {
-    log({ event: "shed", from: tag(m.from) });
+  const kind = m.kind === "text" ? "text" : "media";
+  if ((!queues.has(m.from) && queues.size >= MAX_QUEUES) || (pending.get(m.from) ?? 0) >= MAX_PENDING_PER_PERSON || !budget.allow(m.from, kind)) {
+    log({ event: "shed", from: tag(m.from), why: budget.why(m.from) });
     return Promise.resolve();
   }
-  const next = (queues.get(m.from) ?? Promise.resolve()).then(() => channel.deliver(m)).catch((err) => {
-    log({ event: "error", from: tag(m.from), error: String(err).slice(0, 200) });
-  });
+  pending.set(m.from, (pending.get(m.from) ?? 0) + 1);
+  const next = (queues.get(m.from) ?? Promise.resolve())
+    .then(() => channel.deliver(m))
+    .catch((err) => log({ event: "error", from: tag(m.from), error: String(err).slice(0, 200) }))
+    .finally(() => pending.set(m.from, Math.max(0, (pending.get(m.from) ?? 1) - 1)));
   queues.set(m.from, next);
   void next.finally(() => queues.get(m.from) === next && queues.delete(m.from));
   return Promise.resolve();

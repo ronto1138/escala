@@ -34,7 +34,7 @@ your rights as a passenger, and plans on the way. It is in an early test phase.<
   but they are not end-to-end encrypted between you and Escala: Meta's service processes them to deliver them, under
   <a href="https://www.whatsapp.com/legal/business-terms">WhatsApp's business terms</a>.</li>
   <li><strong>Meta's AI models</strong> (Muse Spark through the Meta Model API) read your messages to answer them. Escala uses
-  them in Standard mode, without storing the requests on Meta's side, and never in the mode where Meta trains on the data.</li>
+  them in Standard mode with request storage turned off, and never in the contributor mode, the one in which Meta trains on the data.</li>
   <li><strong>Railway</strong> hosts the Escala server.</li>
 </ul>
 <p>Escala does not sell your data, does not use it for advertising, and nobody on our team reads your conversations.</p>
@@ -42,9 +42,12 @@ your rights as a passenger, and plans on the way. It is in an early test phase.<
 <h2>How it is kept</h2>
 <ul>
   <li>What Escala remembers is stored encrypted (AES-256-GCM, with a separate key derived for each person). Your phone number is not stored in clear next to it.</li>
-  <li>The last few turns of a conversation are kept in the server's memory for up to 24 hours, so a reply can build on what you just said.</li>
+  <li>The last few turns of a conversation are kept in the server's memory for up to 24 hours, so a reply can build on what you just said.
+  Your trip and the state of the conversation are also held in the server's memory, and expire on the same rules as below.</li>
   <li>Voice notes are converted to text (Muse Voice Transcribe) and then handled like a written message; the audio itself is not kept.</li>
-  <li>Server logs record only that a message arrived and its type, with a one-way tag instead of your number; never the content.</li>
+  <li>Server logs record that a message arrived and its type, with a keyed tag instead of your number, plus usage and error codes;
+  they are not meant to hold what you write, and error texts are cut short.</li>
+  <li>To keep costs bounded, each person can send a limited number of messages, photos and voice notes per hour.</li>
 </ul>
 
 <h2>How long</h2>
@@ -67,7 +70,7 @@ your rights as a passenger, and plans on the way. It is in an early test phase.<
 and it does not promise compensation.</p>
 
 <h2>Changes</h2>
-<p>If this policy changes, the date above changes. Material changes will also be announced in the chat.</p>
+<p>If this policy changes, the date above changes.</p>
 </body>
 </html>
 `;

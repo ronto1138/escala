@@ -78,6 +78,11 @@ const FALLBACK: Record<Lang, string> = {
  */
 const MEMORY_REQUEST =
   /\b(forget|delete|erase|what do you know|what you know|what you remember|olvida|olvides|borra|bórra|qué sabes|que sabes|qué recuerdas|que recuerdas|oublie|oubliez|efface|effacez|que savez-vous|ce que vous savez)\b/i;
+/** A rejected part is put back only if it is short and nothing but a memory request ("and also…" stays out). */
+function isOnlyMemoryRequest(text: string): boolean {
+  return text.length <= 120 && MEMORY_REQUEST.test(text) && !ABOUT_RULES.test(text) && !ALSO.test(text);
+}
+const ALSO = /\b(and also|also|then|plus|y también|también|además|luego|et aussi|aussi|puis|ensuite)\b/i;
 const ABOUT_RULES =
   /\b(rules?|instructions?|prompt|system|guard|policy|policies|reglas?|instrucci\w*|sistema|pol[ií]ticas?|r[eè]gles?|consignes?|syst[eè]me)\b/i;
 
@@ -175,6 +180,11 @@ const TOOLS = [
   },
 ] as const;
 
+/** Removes contact details a statement should never carry: e-mail addresses and long digit runs (phones, cards). */
+export function scrub(text: string): string {
+  return text.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[email]").replace(/\+?\d[\d\s().-]{7,}\d/g, "[number]");
+}
+
 /** Facts remembered before any itinerary was shared expire after this many days. */
 const NO_TRIP_RETENTION_DAYS = 30;
 
@@ -198,11 +208,13 @@ export function longestDeadlineDays(entries: RightEntry[]): number {
       max = Math.max(max, days);
     }
   }
-  return max;
+  return Math.max(max, 366); // never less than the one-year claim windows, even with an incomplete base
 }
 
 /** Builds the pieces the Conversation needs: itinerary extraction and the trip agent. */
-export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extractItinerary" | "agent"> & { reset(personId: string): void } {
+export function createEscalaAgent(
+  deps: AgentDeps,
+): Pick<ConversationDeps, "extractItinerary" | "agent"> & { reset(personId: string): void; sweep(now?: number): void } {
   const trace = deps.trace ?? (() => {});
   const longestClaimDays = longestDeadlineDays(deps.entries);
   const asked = new Map<string, string[]>(); // person -> facts already asked about
@@ -273,7 +285,7 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
       return [{ kind: "text", text: SAY_AGAIN[p.lang] }];
     }
     const parts = guarded.map((x) =>
-      !x.in_scope && MEMORY_REQUEST.test(x.text) && !ABOUT_RULES.test(x.text)
+      !x.in_scope && isOnlyMemoryRequest(x.text)
         ? { ...x, in_scope: true, reason: "request about the traveler's own memory" }
         : x,
     );
@@ -315,7 +327,8 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
           .map((f) => `[${f.topic}] ${f.statement} (told on ${f.source.at.slice(0, 10)})`)
           .join("; ")}.`
       : "";
-    for (const f of learned) numbersInText(f.statement).forEach((n) => allowed.durations.push(n));
+    // Only figures the traveler said themselves (the quote), not ones a model wrote into a statement.
+    for (const f of learned) numbersInText(f.source.quote ?? "").forEach((n) => allowed.durations.push(n));
     const instructions =
       `You are Escala, a warm, plain-spoken travel companion on WhatsApp, for this traveler's trip only. Reply in ${LANG_NAME[p.lang]}, briefly, like a person who knows travel. ` +
       "Use tools for facts; never guess flight status. Never state an amount, percentage, deadline or legal article unless rights_for_trip returned it under 'applies'. " +
@@ -415,8 +428,8 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
         const f = deps.memory.remember(p.id, {
           scope: args.scope === "profile" ? "profile" : "trip",
           topic: String(args.topic).slice(0, 60),
-          statement: String(args.statement).slice(0, 300),
-          source: { kind: "message", ref: currentMessage.id, at: currentMessage.at, quote: String(args.quote).slice(0, 200) },
+          statement: scrub(String(args.statement)).slice(0, 300),
+          source: { kind: "message", ref: currentMessage.id, at: currentMessage.at, quote: scrub(String(args.quote)).slice(0, 200) },
           // Trip facts expire with the trip plus the longest claim deadline; profile facts stay until the person says otherwise.
           ...(args.scope === "profile" ? {} : { expiresAt: tripFactExpiry(trip, currentMessage.at, longestClaimDays) }),
         });
@@ -429,7 +442,7 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
     if (name === "what_i_know") {
       if (!deps.memory) return { facts: [] };
       const facts = deps.memory.recall(p.id);
-      for (const f of facts) numbersInText(f.statement).forEach((n) => allowed.durations.push(n));
+      for (const f of facts) numbersInText(f.source.quote ?? "").forEach((n) => allowed.durations.push(n));
       return {
         sharing: deps.memory.settings(p.id).share,
         facts: facts.map((f) => ({ id: f.id, scope: f.scope, statement: f.statement, from: `${f.source.kind}, ${f.source.at.slice(0, 10)}`, quote: f.source.quote ?? null })),
@@ -505,6 +518,15 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
     reset(personId: string) {
       history.delete(personId);
       asked.delete(personId);
+    },
+    /** Drops per-person state after a day of silence. Run on a schedule. */
+    sweep(now = Date.now()) {
+      for (const [id, h] of history) {
+        if (now - h.at >= HISTORY_TTL_MS) {
+          history.delete(id);
+          asked.delete(id);
+        }
+      }
     },
   };
 }

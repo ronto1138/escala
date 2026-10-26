@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { fromWebhook, verifySignature, type InboundMessage } from "@escala/channel";
 import { PRIVACY_HTML } from "./privacy.ts";
@@ -16,8 +16,12 @@ export interface WebhookOptions {
   log?(event: Record<string, unknown>): void;
 }
 
-/** A short, non-reversible tag for logs: never the phone number itself. */
-export const tag = (id: string) => createHash("sha256").update(id).digest("hex").slice(0, 8);
+/**
+ * A tag for logs instead of the phone number: keyed with a random key made at start, so it cannot be reversed by
+ * trying phone numbers, and it does not link people across restarts.
+ */
+const TAG_KEY = randomBytes(32);
+export const tag = (id: string) => createHmac("sha256", TAG_KEY).update(id).digest("hex").slice(0, 16);
 
 /**
  * The WhatsApp webhook. Nothing is processed unless it is signed with the app secret; duplicate deliveries (Meta

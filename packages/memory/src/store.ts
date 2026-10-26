@@ -83,6 +83,8 @@ export class MemoryStore {
   /** Stores a fact. Profile facts require the person's consent; every fact requires a source. */
   remember(personId: string, f: Omit<Fact, "id" | "createdAt" | "expiresAt"> & { expiresAt?: string | null }): Fact {
     if (!f.source?.ref || !f.source.at) throw new Error("a fact without a source is never stored");
+    // Retention is enforced here, not left to callers: a trip fact without an expiry date is refused.
+    if (f.scope === "trip" && !f.expiresAt) throw new Error("a trip fact needs an expiry date (trip end plus claim deadlines)");
     if (f.scope === "profile" && this.settings(personId).share !== "profile") {
       throw new ConsentError("profile memory is off for this person");
     }

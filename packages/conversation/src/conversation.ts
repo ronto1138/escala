@@ -162,6 +162,23 @@ export class Conversation {
     return this.say(p, T[p.lang].notYet);
   }
 
+  /**
+   * Forgets people whose state has expired: the trip ended and its claim window closed, or nothing was shared and
+   * they have been silent for 30 days. Run on a schedule; returns how many were forgotten.
+   */
+  evict(now: number, claimDays: number): number {
+    let n = 0;
+    for (const [id, p] of this.people) {
+      const lastFlight = (p.trip as { legs?: Array<{ date: string }> } | undefined)?.legs?.map((l) => l.date).sort().at(-1);
+      const until = lastFlight ? Date.parse(`${lastFlight}T00:00:00Z`) + (claimDays + 1) * 86_400_000 : (p.lastSeen ?? now) + 30 * 86_400_000;
+      if (now >= until) {
+        this.people.delete(id);
+        n++;
+      }
+    }
+    return n;
+  }
+
   private async readItinerary(m: InboundMessage, p: Person, correction?: string): Promise<boolean> {
     const got = await this.deps.extractItinerary(m, p, correction);
     if (!got || got.lines.length === 0) return false;

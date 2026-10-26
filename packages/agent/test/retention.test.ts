@@ -15,3 +15,11 @@ describe("retention promised in the privacy policy", () => {
     expect(tripFactExpiry(undefined, "2026-11-01T10:00:00Z", 730)).toBe("2026-12-01T10:00:00.000Z");
   });
 });
+
+describe("audit Oct 26: what may be stored", async () => {
+  const { scrub } = await import("../src/agent.ts");
+  it("removes e-mail addresses and phone or card numbers from statements", () => {
+    expect(scrub("Escríbele a ana@example.test o al +52 55 1234 5678")).toBe("Escríbele a [email] o al [number]");
+    expect(scrub("Perdí una conexión de 50 minutos en 2026")).toBe("Perdí una conexión de 50 minutos en 2026");
+  });
+});

@@ -222,3 +222,17 @@ describe("voice notes become text", () => {
     expect((sim.transcript.at(-1)!.message as { text: string }).text).toBe(T.en.notHeard);
   });
 });
+
+describe("audit Oct 26: state held in the process expires", () => {
+  it("forgets a person after the trip and its claim window, or after 30 silent days without a trip", async () => {
+    const sim = new SimChannel(() => Date.parse("2026-11-02T12:00:00Z"));
+    const conv = new Conversation({ channel: sim, extractItinerary: async () => null });
+    await sim.userSends("31", { kind: "text", text: "hi" });
+    conv.people.get("31")!.trip = { legs: [{ date: "2026-11-02" }] };
+    await sim.userSends("32", { kind: "text", text: "hola" });
+    expect(conv.evict(Date.parse("2026-12-10T00:00:00Z"), 400)).toBe(1); // 32: silent 30+ days, no trip
+    expect(conv.people.has("31")).toBe(true);
+    expect(conv.evict(Date.parse("2027-12-10T00:00:00Z"), 400)).toBe(1); // 31: trip + 400 days passed
+    expect(conv.people.size).toBe(0);
+  });
+});

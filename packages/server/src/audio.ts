@@ -18,13 +18,13 @@ const MIN_PCM_BYTES = Math.round(RATE * 2 * 0.3);
  * (M4A) cannot be read from a pipe; the file is deleted as soon as ffmpeg finishes, whatever happens. ffmpeg returns
  * raw PCM and the WAV header is written here, with the real sizes.
  */
-export async function toWav(input: Uint8Array, opts: { ffmpeg?: string } = {}): Promise<Buffer> {
+export async function toWav(input: Uint8Array): Promise<Buffer> {
   if (input.length > MAX_INPUT_BYTES) throw new Error("voice note is larger than 16 MB");
   const dir = await mkdtemp(join(tmpdir(), "escala-voice-"));
   const src = join(dir, "in");
   try {
     await writeFile(src, input, { mode: 0o600 });
-    const pcm = await run(opts.ffmpeg ?? "ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", src, "-t", String(MAX_VOICE_SECONDS),
+    const pcm = await run("ffmpeg", ["-hide_banner", "-nostdin", "-loglevel", "error", "-threads", "1", "-i", src, "-vn", "-t", String(MAX_VOICE_SECONDS),
       "-ac", "1", "-ar", String(RATE), "-f", "s16le", "-acodec", "pcm_s16le", "-map_metadata", "-1", "pipe:1"]);
     if (pcm.length < MIN_PCM_BYTES) throw new Error("voice note has no audio");
     return Buffer.concat([wavHeader(pcm.length), pcm]);
@@ -57,7 +57,8 @@ function run(cmd: string, args: string[]): Promise<Buffer> {
     p.on("close", (code) => {
       clearTimeout(timer);
       if (code === 0) resolve(Buffer.concat(out));
-      else reject(new Error(`audio conversion failed (${code}): ${err.trim().slice(0, 200)}`));
+      // ffmpeg's messages can echo metadata from the file (titles, tags): they never leave this function.
+      else reject(new Error(`audio conversion failed (exit ${code})`));
     });
   });
 }
