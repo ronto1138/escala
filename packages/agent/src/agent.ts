@@ -5,6 +5,7 @@ import { outputText, type MetaClient } from "@escala/meta-client";
 import { ConsentError, tripRetention, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
 import { legLine } from "./format.ts";
+import { evidenceReply, readEvidence, type EvidenceObject } from "./evidence.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
 import { factsFor, journeys, norm, type Airlines, type Trip } from "./trip.ts";
 import { extractClaims, numbersIn, verify, type Allowed, type Verdict } from "./verify.ts";
@@ -51,6 +52,12 @@ const NOT_YET_MEDIA: Record<Lang, string> = {
   en: "I got it, but I can't open voice notes or photos here yet. Could you write it to me?",
   es: "Me llegó, pero todavía no puedo abrir notas de voz ni fotos aquí. ¿Me lo escribes?",
   fr: "Je l'ai bien reçu, mais je ne peux pas encore ouvrir les messages vocaux ni les photos ici. Pouvez-vous me l'écrire ?",
+};
+
+const NOT_EVIDENCE: Record<Lang, string> = {
+  en: "Got the photo. I can keep photos of your checked bag or your rental car as evidence of their condition; for anything else, tell me what you need.",
+  es: "Me llegó la foto. Puedo guardar fotos de tu maleta documentada o del auto rentado como evidencia de cómo estaban; para otra cosa, dime qué necesitas.",
+  fr: "J'ai bien reçu la photo. Je peux garder des photos de votre bagage enregistré ou de votre voiture de location comme preuve de leur état ; pour autre chose, dites-moi ce dont vous avez besoin.",
 };
 
 const SAY_AGAIN: Record<Lang, string> = {
@@ -222,8 +229,35 @@ export function createEscalaAgent(deps: AgentDeps): Pick<ConversationDeps, "extr
   let messageId = "";
   let messageAt = "";
 
+  async function evidence(m: Extract<InboundMessage, { mediaId: string }>, p: Person, trip: Trip): Promise<string> {
+    const earlierFacts = deps.memory
+      ? (["bag", "car"] as const).flatMap((o) => deps.memory!.recall(p.id, { topic: `evidence.${o}` }).slice(0, 1).map((f) => [o, f] as const))
+      : [];
+    const earlier = Object.fromEntries(
+      earlierFacts.map(([o, f]) => [o, { description: f.statement, visibleDamage: ((f.data?.visibleDamage as string[]) ?? []) }]),
+    );
+    const reading = await readEvidence(deps.client, await deps.media.dataUrl(m.mediaId, m.mimeType), p.lang, earlier);
+    trace({ kind: "tool", name: "evidence", args: { object: reading.object }, result: { damage: reading.visibleDamage.length, marks: reading.marks, new: reading.newDamage ?? null } });
+    if (reading.object === "other") return NOT_EVIDENCE[p.lang];
+    const object = reading.object as EvidenceObject;
+    const before = earlierFacts.find(([o]) => o === object)?.[1];
+    if (deps.memory) {
+      deps.memory.remember(p.id, {
+        scope: "trip",
+        topic: `evidence.${object}`,
+        statement: reading.description,
+        data: { visibleDamage: reading.visibleDamage, newDamage: reading.newDamage ?? null, marks: reading.marks, photoSha256: reading.photoSha256 },
+        source: { kind: "document", ref: m.id, at: m.at },
+        expiresAt: tripFactExpiry(trip, m.at, longestClaimDays),
+      });
+    }
+    return evidenceReply({ ...reading, object }, p.lang, m.at, before?.source.at);
+  }
+
   async function agent(m: InboundMessage, p: Person): Promise<OutboundMessage[]> {
-    if (m.kind !== "text") return [{ kind: "text", text: NOT_YET_MEDIA[p.lang] }]; // voice notes and evidence photos get their own flows
+    // A photo once the trip is known is evidence: the state of the bag or the rental car (itineraries come before).
+    if (m.kind === "image" && p.trip) return [{ kind: "text", text: await evidence(m, p, p.trip as Trip) }];
+    if (m.kind !== "text") return [{ kind: "text", text: NOT_YET_MEDIA[p.lang] }]; // voice notes are transcribed before reaching here
     messageId = m.id;
     messageAt = m.at;
     const trip = p.trip as Trip | undefined;
