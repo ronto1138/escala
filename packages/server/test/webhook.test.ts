@@ -53,9 +53,9 @@ describe("webhook: deliveries", () => {
   it("refuses unsigned, wrongly signed or tampered deliveries", async () => {
     const { base, got } = await start();
     const body = JSON.stringify(payload("wamid.B"));
-    expect((await post(base, body)).status).toBe(401);
-    expect((await post(base, body, sign(body, "another-secret"))).status).toBe(401);
-    expect((await post(base, body.replace("hi", "ho"), sign(body))).status).toBe(401);
+    expect((await post(base, body)).status).toBe(403);
+    expect((await post(base, body, sign(body, "another-secret"))).status).toBe(403);
+    expect((await post(base, body.replace("hi", "ho"), sign(body))).status).toBe(403);
     expect(got).toEqual([]);
   });
 

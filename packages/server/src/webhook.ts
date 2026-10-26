@@ -61,7 +61,7 @@ export function createWebhookHandler(opts: WebhookOptions) {
     }
     if (!verifySignature(opts.appSecret, raw, req.headers["x-hub-signature-256"] as string | undefined)) {
       log({ event: "refused", why: "bad signature" });
-      return reply(401);
+      return reply(403);
     }
     let payload: unknown;
     try {

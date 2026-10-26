@@ -10,7 +10,7 @@ import type { InboundMessage } from "@escala/channel";
 import { Conversation } from "@escala/conversation";
 import { loadScenario, ReplayFeed } from "@escala/feeds";
 import { MemoryCrypto, MemoryStore } from "@escala/memory";
-import { createMetaClient, fileSink } from "@escala/meta-client";
+import { createMetaClient, fileSink, type UsageLine } from "@escala/meta-client";
 import { loadEntries } from "@escala/rights";
 import { CloudApiChannel } from "./cloud.ts";
 import { createWebhookHandler, tag } from "./webhook.ts";
@@ -28,7 +28,10 @@ const channel = new CloudApiChannel({
   phoneNumberId: need("WHATSAPP_PHONE_NUMBER_ID"),
   ...(env.WHATSAPP_GRAPH_VERSION ? { graphVersion: env.WHATSAPP_GRAPH_VERSION } : {}),
 });
-const client = createMetaClient({ apiKey: need("META_API_KEY"), usage: fileSink(env.USAGE_LOG ?? "usage.jsonl"), timeoutMs: 90_000 });
+// Usage lines (tokens, cost; never content) go to a file and to the log, so they can be collected from the host.
+const usageFile = fileSink(env.USAGE_LOG ?? "usage.jsonl");
+const usage = { write: async (line: UsageLine) => { log({ event: "usage", ...line }); await usageFile.write(line); } };
+const client = createMetaClient({ apiKey: need("META_API_KEY"), usage, timeoutMs: 90_000 });
 const dbPath = env.MEMORY_DB ?? "data/memory.db";
 mkdirSync(dirname(dbPath), { recursive: true });
 const memory = new MemoryStore({ path: dbPath, crypto: MemoryCrypto.fromEnv() });

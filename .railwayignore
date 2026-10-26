@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+**/node_modules
+**/*.db
+**/usage.jsonl
+data
+.git
+.github
+.githooks
+eval
+coverage
