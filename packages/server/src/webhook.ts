@@ -31,11 +31,17 @@ export function createWebhookHandler(opts: WebhookOptions) {
   };
 
   return async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const url = new URL(req.url ?? "/", "http://localhost");
     const reply = (status: number, body = "", type = "text/plain") => {
+      if (res.headersSent) return;
       res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store" });
       res.end(body);
     };
+    let url: URL;
+    try {
+      url = new URL(req.url ?? "/", "http://localhost"); // "//[" throws: answered, never allowed to crash the process
+    } catch {
+      return reply(400);
+    }
 
     if (url.pathname === "/health" && req.method === "GET") return reply(200, "ok");
     if (url.pathname !== "/webhook") return reply(404);
@@ -59,7 +65,8 @@ export function createWebhookHandler(opts: WebhookOptions) {
     } catch {
       return reply(413);
     }
-    if (!verifySignature(opts.appSecret, raw, req.headers["x-hub-signature-256"] as string | undefined)) {
+    const header = req.headers["x-hub-signature-256"];
+    if (!verifySignature(opts.appSecret, raw, typeof header === "string" ? header : undefined)) {
       log({ event: "refused", why: "bad signature" });
       return reply(403);
     }
@@ -71,7 +78,14 @@ export function createWebhookHandler(opts: WebhookOptions) {
     }
     reply(200);
 
-    for (const m of fromWebhook(payload)) {
+    let messages: InboundMessage[];
+    try {
+      messages = fromWebhook(payload);
+    } catch (err) {
+      log({ event: "error", why: "unreadable payload", error: String(err).slice(0, 120) });
+      return;
+    }
+    for (const m of messages) {
       if (seen.has(m.id)) {
         log({ event: "duplicate", from: tag(m.from) });
         continue;

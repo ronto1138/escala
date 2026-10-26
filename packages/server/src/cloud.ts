@@ -3,6 +3,11 @@ import { toCloudApi } from "@escala/channel";
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
+const GRAPH_TIMEOUT_MS = 20_000;
+const MEDIA_TIMEOUT_MS = 60_000;
+/** Hosts Meta serves media from. The token is only ever sent to these, over HTTPS, without following redirects. */
+const MEDIA_HOSTS = [".fbsbx.com", ".fbcdn.net", ".facebook.com", ".whatsapp.net"];
+const MEDIA_TYPES = /^(image\/(jpeg|png|webp)|audio\/(ogg|mpeg|mp4|aac|amr)|video\/(mp4|3gpp)|application\/pdf)$/;
 
 export interface CloudApiOptions {
   accessToken: string;
@@ -43,8 +48,10 @@ export class CloudApiChannel implements ChannelPort {
 
   /** Called by the webhook for each verified, new message. */
   async deliver(m: InboundMessage): Promise<void> {
-    const at = Date.parse(m.at);
-    this.lastInbound.set(m.from, Number.isFinite(at) ? Math.max(at, this.lastInbound.get(m.from) ?? 0) : this.opts.now());
+    // The window opens when the message is received; a timestamp in the future cannot stretch it.
+    const now = this.opts.now();
+    const at = Math.min(Date.parse(m.at) || now, now);
+    this.lastInbound.set(m.from, Math.max(at, this.lastInbound.get(m.from) ?? 0));
     await this.handler?.(m);
   }
 
@@ -68,12 +75,27 @@ export class CloudApiChannel implements ChannelPort {
   async dataUrl(mediaId: string, mimeType: string): Promise<string> {
     const meta = (await this.graph(encodeURIComponent(mediaId), { method: "GET" })) as { url?: string; mime_type?: string; file_size?: number };
     if (!meta.url) throw new CloudApiError(200, undefined, "media has no download url");
+    let host: URL;
+    try {
+      host = new URL(meta.url);
+    } catch {
+      throw new CloudApiError(200, undefined, "media url is not valid");
+    }
+    if (host.protocol !== "https:" || !MEDIA_HOSTS.some((h) => `.${host.hostname}`.endsWith(h))) {
+      throw new CloudApiError(200, undefined, "media url is not on a Meta host");
+    }
+    const type = String(meta.mime_type ?? mimeType).split(";")[0]!.trim().toLowerCase();
+    if (!MEDIA_TYPES.test(type)) throw new CloudApiError(415, undefined, "media type not accepted");
     if ((meta.file_size ?? 0) > MAX_MEDIA_BYTES) throw new CloudApiError(413, undefined, "media is larger than 16 MB");
-    const res = await this.opts.fetch(meta.url, { headers: { Authorization: `Bearer ${this.opts.accessToken}` } });
+    const res = await this.opts.fetch(host.href, {
+      headers: { Authorization: `Bearer ${this.opts.accessToken}` },
+      redirect: "error",
+      signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS),
+    });
     if (!res.ok) throw new CloudApiError(res.status, undefined, "media download failed");
     const bytes = Buffer.from(await res.arrayBuffer());
     if (bytes.length > MAX_MEDIA_BYTES) throw new CloudApiError(413, undefined, "media is larger than 16 MB");
-    return `data:${meta.mime_type ?? mimeType};base64,${bytes.toString("base64")}`;
+    return `data:${type};base64,${bytes.toString("base64")}`;
   }
 
   private async graph(path: string, init: { method: string; body?: string }): Promise<unknown> {
@@ -81,6 +103,7 @@ export class CloudApiChannel implements ChannelPort {
       method: init.method,
       headers: { Authorization: `Bearer ${this.opts.accessToken}`, ...(init.body ? { "Content-Type": "application/json" } : {}) },
       ...(init.body ? { body: init.body } : {}),
+      signal: AbortSignal.timeout(GRAPH_TIMEOUT_MS),
     });
     const text = await res.text();
     let json: any = {};

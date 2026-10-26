@@ -50,9 +50,14 @@ new Conversation({
   },
 });
 
-// One person's messages are handled in order; different people in parallel.
+// One person's messages are handled in order; different people in parallel. Capped so a flood cannot exhaust memory.
+const MAX_QUEUES = 500;
 const queues = new Map<string, Promise<void>>();
 const deliver = (m: InboundMessage) => {
+  if (!queues.has(m.from) && queues.size >= MAX_QUEUES) {
+    log({ event: "shed", from: tag(m.from) });
+    return Promise.resolve();
+  }
   const next = (queues.get(m.from) ?? Promise.resolve()).then(() => channel.deliver(m)).catch((err) => {
     log({ event: "error", from: tag(m.from), error: String(err).slice(0, 200) });
   });
@@ -64,6 +69,17 @@ const deliver = (m: InboundMessage) => {
 const handler = createWebhookHandler({ verifyToken: need("WHATSAPP_VERIFY_TOKEN"), appSecret: env.WHATSAPP_APP_SECRET, deliver, log });
 const host = env.HOST ?? "127.0.0.1";
 const port = Number(env.PORT ?? 8080);
-createServer((req, res) => void handler(req, res)).listen(port, host, () => {
+// Nothing a request does may take the process down; a failure is logged (without content) and answered with 500.
+process.on("unhandledRejection", (err) => log({ event: "error", why: "unhandled rejection", error: String(err).slice(0, 200) }));
+const server = createServer((req, res) =>
+  void handler(req, res).catch((err) => {
+    log({ event: "error", why: "handler", error: String(err).slice(0, 200) });
+    if (!res.headersSent) res.writeHead(500).end();
+  }),
+);
+// Slow clients cannot hold connections open: headers in 10 s, the whole request in 30 s.
+server.headersTimeout = 10_000;
+server.requestTimeout = 30_000;
+server.listen(port, host, () => {
   log({ event: "listening", host, port, signed_deliveries: Boolean(env.WHATSAPP_APP_SECRET) });
 });

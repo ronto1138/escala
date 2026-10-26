@@ -1,6 +1,9 @@
-.env
-.env.*
+**/.env
+**/.env.*
 !.env.example
+**/*.pem
+**/*.key
+**/id_rsa*
 **/node_modules
 **/*.db
 **/usage.jsonl
@@ -10,3 +13,5 @@ data
 .githooks
 eval
 coverage
+packages/*/test
+packages/server/data

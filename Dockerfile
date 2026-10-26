@@ -10,4 +10,4 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 RUN mkdir -p /data
 ENV HOST=0.0.0.0 MEMORY_DB=/data/memory.db USAGE_LOG=/data/usage.jsonl
 EXPOSE 8080
-CMD ["sh", "-c", "chown node:node /data && exec setpriv --reuid=node --regid=node --init-groups node --experimental-strip-types --no-warnings packages/server/src/main.ts"]
+CMD ["sh", "-c", "chown node:node /data && exec setpriv --reuid=node --regid=node --init-groups --inh-caps=-all --bounding-set=-all --no-new-privs node --experimental-strip-types --no-warnings packages/server/src/main.ts"]

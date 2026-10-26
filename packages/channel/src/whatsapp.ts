@@ -21,8 +21,8 @@ export const LIMITS = {
 export function validateOutbound(m: OutboundMessage): string[] {
   const p: string[] = [];
   const max = (what: string, s: string | undefined, n: number) => {
-    // Only a short prefix of the text goes into the error: messages can carry personal data.
-    if (s !== undefined && [...s].length > n) p.push(`${what} is ${[...s].length} characters (max ${n}): "${[...s].slice(0, 24).join("")}…"`);
+    // Never the text itself: errors end up in logs, and messages carry personal data.
+    if (s !== undefined && [...s].length > n) p.push(`${what} is ${[...s].length} characters (max ${n})`);
   };
   const required = (what: string, s: string | undefined) => {
     if (!s || !s.trim()) p.push(`${what} is empty`);
@@ -148,9 +148,10 @@ export function verifySignature(appSecret: string, rawBody: string | Buffer, hea
 /** Extracts the user messages from a webhook payload. Status updates and unknown types are ignored. */
 export function fromWebhook(payload: any): InboundMessage[] {
   const out: InboundMessage[] = [];
-  for (const entry of payload?.entry ?? []) {
-    for (const change of entry?.changes ?? []) {
-      for (const m of change?.value?.messages ?? []) {
+  const list = (x: unknown): any[] => (Array.isArray(x) ? x : []); // a signed but odd payload must not throw
+  for (const entry of list(payload?.entry)) {
+    for (const change of list(entry?.changes)) {
+      for (const m of list(change?.value?.messages)) {
         // Skip anything malformed instead of crashing the whole batch.
         const ts = Number(m?.timestamp);
         if (typeof m?.id !== "string" || typeof m?.from !== "string" || !/^\d{6,15}$/.test(m.from) || !Number.isFinite(ts)) continue;
