@@ -1,0 +1,8 @@
+{
+  "name": "@escala/conversation",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@escala/channel": "0.1.0" }
+}
