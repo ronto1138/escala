@@ -10,7 +10,7 @@ import type { InboundMessage } from "@escala/channel";
 import { Conversation } from "@escala/conversation";
 import { loadScenario, ReplayFeed } from "@escala/feeds";
 import { MemoryCrypto, MemoryStore } from "@escala/memory";
-import { createMetaClient, fileSink, type UsageLine } from "@escala/meta-client";
+import { createMetaClient, createOpenModelClient, fileSink, type UsageLine } from "@escala/meta-client";
 import { loadEntries } from "@escala/rights";
 import { toWav, tripKeywords } from "./audio.ts";
 import { Budget } from "./budget.ts";
@@ -53,7 +53,9 @@ const claimDays = longestDeadlineDays(loadEntries());
 const scenario = fileURLToPath(new URL("../../feeds/scenarios/demo-inbound-late.yaml", import.meta.url));
 const feed = new ReplayFeed(loadScenario(scenario));
 
-const escala = createEscalaAgent({ client, feed, entries: loadEntries(), media: channel, memory });
+// Muse Spark Open on Baseten: the memory that learns (D36). Optional; without the key Escala only remembers on request.
+const learner = env.BASETEN_API_KEY ? createOpenModelClient({ apiKey: env.BASETEN_API_KEY, usage, timeoutMs: 60_000 }) : undefined;
+const escala = createEscalaAgent({ client, feed, entries: loadEntries(), media: channel, memory, ...(learner ? { learner } : {}) });
 const conversation = new Conversation({
   channel,
   extractItinerary: escala.extractItinerary,

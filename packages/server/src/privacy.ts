@@ -42,6 +42,9 @@ policy will be updated.</p>
   <li><strong>Meta's AI models</strong> (Muse Spark through the Meta Model API) read your messages to answer them. Escala uses
   them in Standard mode with request storage turned off. During the hackathon, while Meta's free credits are used, Meta may use that content to
   improve its products (see the notice above).</li>
+  <li><strong>Muse Spark Open</strong>, Meta's open-weight model, served by <strong>Baseten</strong>, reads what you write after Escala
+  answers and proposes habits worth remembering (for example, that you always check a bag), with your own words as the source.
+  Escala's code decides what is kept. Baseten states that it keeps no copy of these requests and does not train on them.</li>
   <li><strong>Railway</strong> hosts the Escala server.</li>
 </ul>
 <p>Escala does not sell your data, does not use it for advertising, and nobody on our team reads your conversations.</p>
@@ -71,6 +74,9 @@ policy will be updated.</p>
   <li>Send <em>STOP</em> to stop messages.</li>
   <li>Or write to ives.laurent@kokorio.com.</li>
 </ul>
+
+<h2>Who Escala is for</h2>
+<p>Escala is for adults (18 and over). Built with Muse Spark Open.</p>
 
 <h2>Not legal advice</h2>
 <p>Escala gives information about passenger rights with its sources. It is not legal advice, it does not book or pay for anything,

@@ -1,11 +1,12 @@
 import type { InboundMessage, OutboundMessage } from "@escala/channel";
 import type { ConversationDeps, ExtractedTrip, Lang, Person } from "@escala/conversation";
 import { arrivalMinutesLate, inboundDelayMinutes, type FlightFeed } from "@escala/feeds";
-import { outputText, type MetaClient } from "@escala/meta-client";
+import { outputText, type MetaClient, type OpenModelClient } from "@escala/meta-client";
 import { ConsentError, tripRetention, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
 import { legLine } from "./format.ts";
 import { evidenceReply, readEvidence, type EvidenceObject } from "./evidence.ts";
+import { acceptCandidates, proposeFacts } from "./learner.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
 import { factsFor, journeys, norm, type Airlines, type Trip } from "./trip.ts";
 import { extractClaims, numbersIn, verify, type Allowed, type Verdict } from "./verify.ts";
@@ -20,6 +21,11 @@ export interface AgentDeps {
   /** Called with each step, for the trust panel. */
   trace?: (step: TraceStep) => void;
   maxToolRounds?: number;
+  /**
+   * Muse Spark Open (served by Baseten): after each answer it reads what the traveler wrote and proposes durable
+   * facts, which the code filters before storing. Optional: without it Escala only remembers what it is told to.
+   */
+  learner?: OpenModelClient;
   /** Airline reference data (country, EU carrier, APPR size). Defaults to the fictitious airlines of the demo. */
   airlines?: Airlines;
 }
@@ -266,6 +272,24 @@ export function createEscalaAgent(
     return evidenceReply({ ...reading, object }, p.lang, m.at, before?.source.at);
   }
 
+  /** Proposes facts from the traveler's own words (Muse Spark Open) and keeps only what passes the code's rules. */
+  async function learn(said: string, p: Person, messageId: string, at: string, trip: Trip | undefined): Promise<void> {
+    if (!deps.learner || !deps.memory || said.trim().length < 12) return;
+    const share = deps.memory.settings(p.id).share;
+    const existing = deps.memory.recall(p.id).filter((f) => f.topic.startsWith("learned."));
+    const accepted = acceptCandidates(await proposeFacts(deps.learner, said, p.lang), said, existing, share);
+    for (const f of accepted) {
+      deps.memory.remember(p.id, {
+        scope: f.scope,
+        topic: `learned.${f.topic}`,
+        statement: f.statement,
+        source: { kind: "message", ref: messageId, at, quote: f.quote },
+        ...(f.scope === "trip" ? { expiresAt: tripFactExpiry(trip, at, longestClaimDays) } : {}),
+      });
+    }
+    trace({ kind: "tool", name: "learn", args: { model: "muse-spark-open" }, result: { kept: accepted.map((f) => `${f.scope}:${f.topic}`) } });
+  }
+
   async function agent(m: InboundMessage, p: Person): Promise<OutboundMessage[]> {
     // A photo once the trip is known is evidence: the state of the bag or the rental car (itineraries come before).
     if (m.kind === "image" && p.trip) return [{ kind: "text", text: await evidence(m, p, p.trip as Trip) }];
@@ -308,6 +332,8 @@ export function createEscalaAgent(
       draft = SAY_AGAIN[p.lang];
     }
     keepTurn(p.id, at, question, draft);
+    // Learning runs after the answer and never delays it; a failure only means nothing is learned this turn.
+    if (deps.learner && deps.memory) void learn(question, p, m.id, m.at, trip).catch((err) => trace({ kind: "fallback", reason: `learning failed: ${String(err).slice(0, 120)}` }));
     replies.push({ kind: "text", text: draft });
     return replies;
   }

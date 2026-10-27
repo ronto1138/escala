@@ -89,3 +89,21 @@ describe("speech to text", () => {
     expect(usage.lines[0]!.cost_usd).toBeCloseTo((8 / 3600) * 0.18, 6);
   });
 });
+
+describe("Muse Spark Open on Baseten", async () => {
+  const { createOpenModelClient, OPEN_MODEL } = await import("../src/index.ts");
+  it("asks for structured output, logs provider baseten with its cost, and parses the answer", async () => {
+    const calls: any[] = [];
+    const fetchFake = (async (url: string, init: any) => {
+      calls.push({ url, body: JSON.parse(init.body) });
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"facts":[]}' } }], usage: { prompt_tokens: 1000, completion_tokens: 200, prompt_tokens_details: { cached_tokens: 0 } } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const usage = memorySink();
+    const open = createOpenModelClient({ apiKey: "k", usage, fetch: fetchFake });
+    expect(await open.json({ instructions: "i", input: "x", schemaName: "s", schema: { type: "object" } }, { caller: "memory/learn" })).toEqual({ facts: [] });
+    expect(calls[0].url).toBe("https://inference.baseten.co/v1/chat/completions");
+    expect(calls[0].body).toMatchObject({ model: OPEN_MODEL, response_format: { type: "json_schema" } });
+    expect(usage.lines[0]).toMatchObject({ provider: "baseten", model: OPEN_MODEL, ok: true });
+    expect(usage.lines[0]!.cost_usd).toBeCloseTo((1000 * 1.25 + 200 * 4.25) / 1e6, 6);
+  });
+});

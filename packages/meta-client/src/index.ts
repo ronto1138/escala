@@ -3,6 +3,7 @@ import { newUsageId, type UsageSink } from "./usage.ts";
 
 export { MODELS, costUsd, isAllowedModel, type ModelId, type Usage } from "./pricing.ts";
 export { fileSink, memorySink, type UsageLine, type UsageSink } from "./usage.ts";
+export { createOpenModelClient, OPEN_MODEL, OPEN_PRICE, type JsonRequest, type OpenModelClient, type OpenModelOptions } from "./open.ts";
 
 export interface MetaClientOptions {
   apiKey: string;

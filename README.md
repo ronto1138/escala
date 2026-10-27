@@ -7,7 +7,8 @@ how you like to travel, if you let it. When an answer involves rules or money, i
 when Escala does not know, it says so.
 
 Built for the **Meta Global AI Developer Hackathon** (Oct 26 – Nov 4, 2026), theme *Build for Your World*,
-with Meta's models through the Meta Model API.
+with Meta's models through the Meta Model API. **Built with Muse Spark Open**: Meta's open-weight model, served by
+Baseten, is the memory that learns how each traveler likes to travel. Escala is for adults (18+).
 
 > Status: **Day 2 (Oct 27).** Escala is live on WhatsApp (Meta's test number), running on Railway. It reads an
 > itinerary from a screenshot, watches flights (with the inbound-aircraft inference), decides passenger rights by
@@ -25,6 +26,7 @@ with Meta's models through the Meta Model API.
 | `channel` | WhatsApp Cloud API payloads checked against platform limits, webhook signature verification, and a simulator with the same rules, including the 24-hour window |
 | `conversation` | Conversation first: people say what they need in their own words; a short first-contact introduction; the menu only on request |
 | `agent` | Muse Spark with tools (flight status, rights for this trip, memory), a scope guard that keeps every answer on the trip, a deterministic verifier that blocks any amount, percentage or deadline the rules did not produce, and evidence photos read with Muse Spark and SAM 3.1 |
+| `meta-client` (open) | Muse Spark Open on Baseten for structured output, synchronous only (zero data retention), usage logged with provider and cost |
 | `memory` | What Escala remembers, encrypted per person (AES-256-GCM), with the source of every fact, consent for anything beyond the trip, and retention enforced: trip facts expire with the trip and its claim deadlines |
 | `server` | The WhatsApp service: signed webhook, Cloud API channel, voice notes through Muse Voice Transcribe, spending limits, the privacy page, and the hourly retention sweep |
 

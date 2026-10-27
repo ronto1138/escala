@@ -79,7 +79,7 @@ export const T: Record<Lang, Texts> = {
       "Your messages travel encrypted. To help you, Escala and the Meta service that manages this chat process them. " +
       "During Meta's hackathon, Escala runs on free credits from Meta, and while it does, Meta may use what is sent to its AI models to improve its products: please use made-up details only. " +
       "What I remember about you is stored encrypted, is never used for ads, and no one on our team reads it. " +
-      "Ask me what I know about you, or tell me to forget something or everything.",
+      "Ask me what I know about you, or tell me to forget something or everything. Escala is for adults; built with Muse Spark Open.",
     menuText: "What do you need?",
     menuButton: "Open menu",
     menuSections: [
@@ -132,7 +132,7 @@ export const T: Record<Lang, Texts> = {
       "Tus mensajes viajan cifrados. Para ayudarte, Escala y el servicio de Meta que gestiona este chat los procesan. " +
       "Durante el hackathon de Meta, Escala funciona con créditos gratuitos de Meta y, mientras sea así, Meta puede usar lo que se envía a sus modelos de IA para mejorar sus productos: usa solo datos inventados. " +
       "Lo que recuerdo de ti se guarda cifrado, no se usa para publicidad y nadie del equipo lo lee. " +
-      "Pregúntame qué sé de ti, o pídeme que olvide algo o todo.",
+      "Pregúntame qué sé de ti, o pídeme que olvide algo o todo. Escala es para mayores de edad; built with Muse Spark Open.",
     menuText: "¿Qué necesitas?",
     menuButton: "Ver menú",
     menuSections: [
@@ -185,7 +185,7 @@ export const T: Record<Lang, Texts> = {
       "Vos messages voyagent chiffrés. Pour vous aider, Escala et le service de Meta qui gère cette conversation les traitent. " +
       "Pendant le hackathon de Meta, Escala fonctionne avec des crédits gratuits de Meta et, tant que c'est le cas, Meta peut utiliser ce qui est envoyé à ses modèles d'IA pour améliorer ses produits : utilisez uniquement des données inventées. " +
       "Ce dont je me souviens sur vous est stocké chiffré, ne sert pas à la publicité, et personne dans notre équipe ne le lit. " +
-      "Demandez-moi ce que je sais de vous, ou d'oublier une chose ou tout.",
+      "Demandez-moi ce que je sais de vous, ou d'oublier une chose ou tout. Escala est réservé aux adultes ; built with Muse Spark Open.",
     menuText: "De quoi avez-vous besoin ?",
     menuButton: "Ouvrir le menu",
     menuSections: [

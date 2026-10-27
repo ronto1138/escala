@@ -15,6 +15,8 @@ export interface UsageLine {
   cost_usd: number;
   ok: boolean;
   error?: string;
+  /** Who served the call when it is not the Meta Model API (e.g. "baseten" for Muse Spark Open). */
+  provider?: string;
 }
 
 export interface UsageSink {
