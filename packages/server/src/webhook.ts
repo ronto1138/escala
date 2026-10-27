@@ -60,8 +60,11 @@ export function createWebhookHandler(opts: WebhookOptions) {
       return ok ? reply(200, url.searchParams.get("hub.challenge") ?? "") : reply(403);
     }
     if (req.method !== "POST") return reply(405);
+    // Our own checks (deploy script, operations report) say so; they are refused exactly the same way, and only
+    // labelled, so the report can tell them from someone else probing the webhook.
+    const probe = req.headers["x-escala-probe"] === "1";
     if (!opts.appSecret) {
-      log({ event: "refused", why: "no app secret configured" });
+      log({ event: "refused", why: "no app secret configured", ...(probe ? { probe } : {}) });
       return reply(503);
     }
 
@@ -73,7 +76,7 @@ export function createWebhookHandler(opts: WebhookOptions) {
     }
     const header = req.headers["x-hub-signature-256"];
     if (!verifySignature(opts.appSecret, raw, typeof header === "string" ? header : undefined)) {
-      log({ event: "refused", why: "bad signature" });
+      log({ event: "refused", why: "bad signature", ...(probe ? { probe } : {}) });
       return reply(403);
     }
     let payload: unknown;
