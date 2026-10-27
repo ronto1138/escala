@@ -48,7 +48,20 @@ policy will be updated.</p>
   Baseten states that it keeps no copy of these requests and does not train on them.</li>
   <li><strong>Railway</strong> hosts the Escala server.</li>
 </ul>
-<p>Escala does not sell your data, does not use it for advertising, and nobody on our team reads your conversations.</p>
+<p>Escala does not sell your data and does not use it for advertising.</p>
+
+<h2>Test phase: the team reads the conversations</h2>
+<p>Escala is in a test phase. It answers only numbers the Kokorio team has enrolled by hand, and each tester is told
+this before being enrolled: <strong>the team reads the full conversations</strong> (what you write, what Escala answers,
+and what a voice note was heard as) to find mistakes and improve Escala. Use made-up details only.</p>
+<ul>
+  <li>Each message is sealed with a public key before it is written to the server's log. The private key is not on the
+  server or with the host, so only the team can open them, on its own computer.</li>
+  <li>This lasts until at least November 30, 2026, and may continue while Escala is being tuned. The page will say when it ends.</li>
+  <li>If you ask Escala to delete everything, your memory and conversation state are deleted, and your messages are
+  removed from the team's copy the next time it is read. Sealed lines already in the host's log stay there, unreadable
+  without the team's key, until the host discards its logs.</li>
+</ul>
 
 <h2>How it is kept</h2>
 <ul>
@@ -57,7 +70,7 @@ policy will be updated.</p>
   way, so Escala understands a reply in context, even after a restart. They expire on the same rules as below.</li>
   <li>Voice notes are converted to text (Muse Voice Transcribe) and then handled like a written message; the audio itself is not kept.</li>
   <li>Server logs record that a message arrived and its type, with a keyed tag instead of your number, plus usage and error codes;
-  they are not meant to hold what you write, and error texts are cut short.</li>
+  apart from the sealed test-phase lines above, they are not meant to hold what you write, and error texts are cut short.</li>
   <li>To keep costs bounded, each person can send a limited number of messages, photos and voice notes per hour.</li>
 </ul>
 

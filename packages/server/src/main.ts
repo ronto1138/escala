@@ -16,6 +16,7 @@ import { toWav, tripKeywords } from "./audio.ts";
 import { Budget } from "./budget.ts";
 import { CloudApiChannel } from "./cloud.ts";
 import { createNotifier } from "./notifier.ts";
+import { createTestPhase, NOT_ENROLLED } from "./testers.ts";
 import { createWebhookHandler, tag } from "./webhook.ts";
 
 const env = process.env;
@@ -52,6 +53,15 @@ const client = createMetaClient({ apiKey: need("META_API_KEY"), usage, timeoutMs
 const dbPath = env.MEMORY_DB ?? "data/memory.db";
 mkdirSync(dirname(dbPath), { recursive: true });
 const crypto = MemoryCrypto.fromEnv();
+// Test phase (D43): only numbers enrolled by hand are answered, and their conversations are written to the log sealed
+// with a public key, so only the team can read them, on its own machine. Testers are told before they are enrolled.
+const testers = createTestPhase({
+  masterKey: Buffer.from(need("ESCALA_MEMORY_KEY"), "base64"),
+  enrolled: env.ESCALA_TESTERS,
+  publicKey: env.TRANSCRIPT_PUBLIC_KEY,
+  until: env.TRANSCRIPT_UNTIL,
+  log,
+});
 const memory = new MemoryStore({ path: dbPath, crypto });
 // Where each person is in the conversation, encrypted, so a deploy does not forget a question Escala asked.
 const people = new ConversationStore<Person>({ path: dbPath, crypto });
@@ -109,6 +119,7 @@ const conversation = new Conversation({
     }
   },
   onDelete: async (id) => {
+    testers.forget(id);
     memory.forget(id, "all");
     escala.reset(id);
   },
@@ -138,7 +149,17 @@ const MAX_QUEUES = 500;
 const MAX_PENDING_PER_PERSON = 5;
 const queues = new Map<string, Promise<void>>();
 const pending = new Map<string, number>();
+const turnedAway = new Set<string>();
 const deliver = (m: InboundMessage) => {
+  if (!testers.allowed(m.from)) {
+    log({ event: "not_enrolled", from: tag(m.from) });
+    if (!turnedAway.has(m.from) && turnedAway.size < MAX_QUEUES && budget.allow(m.from, "text")) {
+      turnedAway.add(m.from);
+      void channel.send(m.from, { kind: "text", text: NOT_ENROLLED }).catch(() => undefined);
+    }
+    return Promise.resolve();
+  }
+  testers.inbound(m);
   const kind = m.kind === "text" ? "text" : "media";
   if ((!queues.has(m.from) && queues.size >= MAX_QUEUES) || (pending.get(m.from) ?? 0) >= MAX_PENDING_PER_PERSON || !budget.allow(m.from, kind)) {
     log({ event: "shed", from: tag(m.from), why: budget.why(m.from) });
@@ -162,6 +183,7 @@ channel.send = async (to, m) => {
   try {
     const r = await sendRaw(to, m);
     log({ event: "sent", kind: m.kind });
+    testers.outbound(to, m);
     return r;
   } catch (err) {
     log({ event: "send_failed", kind: m.kind, error: String(err).slice(0, 160) });
@@ -188,7 +210,7 @@ const server = createServer((req, res) =>
 server.headersTimeout = 10_000;
 server.requestTimeout = 30_000;
 server.listen(port, host, () => {
-  log({ event: "listening", host, port, signed_deliveries: Boolean(env.WHATSAPP_APP_SECRET) });
+  log({ event: "listening", host, port, signed_deliveries: Boolean(env.WHATSAPP_APP_SECRET), testers: testers.enrolledCount, transcribing: testers.transcribing });
 });
 
 /** One agent step as a log event, without any content: how many parts, blocked figures, tool names, outcomes. */
