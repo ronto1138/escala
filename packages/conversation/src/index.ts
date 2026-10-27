@@ -6,6 +6,9 @@ export {
   type ExtractedTrip,
   type Intent,
   type Person,
+  type PersonStore,
+  type Route,
+  type Turn,
   type ShareLevel,
   type Stage,
 } from "./conversation.ts";

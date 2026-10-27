@@ -44,7 +44,8 @@ policy will be updated.</p>
   improve its products (see the notice above).</li>
   <li><strong>Muse Spark Open</strong>, Meta's open-weight model, served by <strong>Baseten</strong>, reads what you write after Escala
   answers and proposes habits worth remembering (for example, that you always check a bag), with your own words as the source.
-  Escala's code decides what is kept. Baseten states that it keeps no copy of these requests and does not train on them.</li>
+  Escala's code decides what is kept. If Meta's own service does not answer, the same model on Baseten answers your message instead.
+  Baseten states that it keeps no copy of these requests and does not train on them.</li>
   <li><strong>Railway</strong> hosts the Escala server.</li>
 </ul>
 <p>Escala does not sell your data, does not use it for advertising, and nobody on our team reads your conversations.</p>
@@ -52,8 +53,8 @@ policy will be updated.</p>
 <h2>How it is kept</h2>
 <ul>
   <li>What Escala remembers is stored encrypted (AES-256-GCM, with a separate key derived for each person). Your phone number is not stored in clear next to it.</li>
-  <li>The last few turns of a conversation are kept in the server's memory for up to 24 hours, so a reply can build on what you just said.
-  Your trip and the state of the conversation are also held in the server's memory, and expire on the same rules as below.</li>
+  <li>The last turns of the conversation (at most 12, for up to 48 hours), where you are in it and your trip are kept encrypted the same
+  way, so Escala understands a reply in context, even after a restart. They expire on the same rules as below.</li>
   <li>Voice notes are converted to text (Muse Voice Transcribe) and then handled like a written message; the audio itself is not kept.</li>
   <li>Server logs record that a message arrived and its type, with a keyed tag instead of your number, plus usage and error codes;
   they are not meant to hold what you write, and error texts are cut short.</li>

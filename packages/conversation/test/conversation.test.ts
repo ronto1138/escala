@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SimChannel, validateOutbound, type OutboundMessage } from "@escala/channel";
-import { Conversation, detectLang, keywordIntent, LANGS, T, type ExtractedTrip } from "../src/index.ts";
+import { Conversation, detectLang, keywordIntent, LANGS, T, type ExtractedTrip, type Person } from "../src/index.ts";
 
 const trip: ExtractedTrip = {
   lines: ["ZZ 1234 · lun 2 nov · Austin 07:10 → Chicago 09:35", "ZZ 567 · lun 2 nov · Chicago 10:30 → Montreal 13:40"],
@@ -257,5 +257,56 @@ describe("Oct 27 field test: 'puedes acordarte de todo'", () => {
     expect(keywordIntent("remember everything", "en")).toBe("remember");
     expect(keywordIntent("solo este viaje", "es")).toBe("trip_only");
     expect(keywordIntent("sí, está todo bien", "es")).toBe("yes"); // "todo" alone is not "remember"
+  });
+});
+
+describe("Oct 27 field test: read in context, across restarts", () => {
+  const memoryStore = () => {
+    const m = new Map<string, Person>();
+    return { load: (id: string) => (m.has(id) ? structuredClone(m.get(id)!) : undefined), save: (p: Person) => void m.set(p.id, structuredClone(p)), delete: (id: string) => void m.delete(id), m };
+  };
+
+  it("an answer given after a restart still answers the question Escala asked, and the model saw that question", async () => {
+    const store = memoryStore();
+    const sim = new SimChannel();
+    new Conversation({ channel: sim, extractItinerary: async () => null, store });
+    await sim.userSends("51", { kind: "text", text: "hola" });
+    expect(store.m.get("51")?.awaiting).toBe("share");
+
+    // A deploy: a new process, the same store.
+    const sim2 = new SimChannel();
+    const seen: Array<{ text: string; recent: string[] }> = [];
+    new Conversation({
+      channel: sim2, extractItinerary: async () => null, store,
+      route: async (text, p) => (seen.push({ text, recent: (p.recent ?? []).map((t) => `${t.role}: ${t.text.slice(0, 20)}`) }), { kind: "share", share: "profile" }),
+    });
+    await sim2.userSends("51", { kind: "text", text: "puedes acordarte de todo" });
+    const out = sim2.transcript.filter((e) => e.direction === "out").map((e) => (e.message as { text: string }).text);
+    expect(out[0]).toBe(T.es.sharedProfile); // not the introduction again
+    expect(seen[0]!.recent.some((r) => r.startsWith("escala: Antes de empezar"))).toBe(true);
+    expect(store.m.get("51")).toMatchObject({ share: "profile", awaiting: null });
+    expect(store.m.get("51")!.recent!.map((t) => t.role)).toEqual(["traveler", "escala", "escala", "traveler", "escala", "escala"]);
+  });
+
+  it("a model reading 'delete everything' only asks; the explicit word erases", async () => {
+    const store = memoryStore();
+    const sim = new SimChannel();
+    const erased: string[] = [];
+    new Conversation({ channel: sim, extractItinerary: async () => null, store, onDelete: async (id) => void erased.push(id), route: async () => ({ kind: "delete_all" }) });
+    await sim.userSends("52", { kind: "text", text: "Hola" });
+    await sim.userSends("52", { kind: "text", text: "olvídate de mí por completo, ya no viajo" });
+    expect(erased).toEqual([]);
+    expect((sim.transcript.at(-1)!.message as { text: string }).text).toMatch(/Responde BORRAR para confirmar/);
+    await sim.userSends("52", { kind: "text", text: "borrar" });
+    expect(erased).toEqual(["52"]);
+    expect(store.m.has("52")).toBe(false);
+  });
+
+  it("when the model fails, the keyword fallback still works", async () => {
+    const sim = new SimChannel();
+    const conv = new Conversation({ channel: sim, extractItinerary: async () => null, route: async () => { throw new Error("model down"); } });
+    await sim.userSends("53", { kind: "text", text: "hola" });
+    await sim.userSends("53", { kind: "text", text: "solo este viaje" });
+    expect(conv.people.get("53")).toMatchObject({ share: "trip", awaiting: null });
   });
 });

@@ -4,8 +4,30 @@ import { DELETE_ALL_PHRASES, DELETE_WORDS, detectLang, MENU_WORDS, PRIVACY_WORDS
 export type Stage = "new" | "onboarding" | "ready" | "stopped";
 export type ShareLevel = "trip" | "profile";
 /** What Escala is waiting for, if anything. People can always say something else instead. */
-export type Awaiting = "share" | "confirm" | "fix" | null;
+export type Awaiting = "share" | "confirm" | "fix" | "delete_confirm" | null;
 export type Intent = "yes" | "no" | "remember" | "trip_only" | "other";
+
+/** One line of the conversation, kept (encrypted) so the next message is read in context. */
+export interface Turn {
+  role: "traveler" | "escala";
+  text: string;
+  at: string;
+}
+
+/**
+ * What a message is, decided by a model that sees the conversation (the question Escala asked, the last turns, the
+ * trip). The code acts on it. "delete_all" from a model is only a request: it is confirmed before anything is erased.
+ */
+export type Route =
+  | { kind: "share"; share: "trip" | "profile" }
+  | { kind: "confirm" }
+  | { kind: "fix"; correction: string | null }
+  | { kind: "itinerary" }
+  | { kind: "stop" }
+  | { kind: "delete_all" }
+  | { kind: "menu" }
+  | { kind: "privacy" }
+  | { kind: "other" };
 
 export interface ExtractedTrip {
   /** One line per leg, already worded for the person in their language. */
@@ -26,6 +48,15 @@ export interface Person {
   lastSeen?: number;
   pending?: ExtractedTrip;
   trip?: unknown;
+  /** The last turns, newest last (at most 12, at most 48 hours old). */
+  recent?: Turn[];
+}
+
+/** Persistence for people's state, so a deploy or restart does not forget a question Escala asked. */
+export interface PersonStore {
+  load(id: ParticipantId): Person | undefined;
+  save(p: Person): void;
+  delete(id: ParticipantId): void;
 }
 
 export interface ConversationDeps {
@@ -34,6 +65,13 @@ export interface ConversationDeps {
   extractItinerary(m: InboundMessage, person: Person, correction?: string): Promise<ExtractedTrip | null>;
   /** How a free-text answer should be read when Escala asked something. Defaults to keyword matching. */
   understand?(text: string, person: Person): Promise<Intent>;
+  /**
+   * Reads what a message is, with the conversation as context (`person.recent`, the question Escala asked). When it
+   * is present it decides; keywords are only the fallback if it fails. The current message is not in `recent` yet.
+   */
+  route?(text: string, person: Person): Promise<Route>;
+  /** Where people's state lives between messages and across restarts. Without it, only in this process. */
+  store?: PersonStore;
   /** Everything else: the trip agent. Optional while it is being built. */
   agent?(m: InboundMessage, person: Person): Promise<OutboundMessage[]>;
   onTripConfirmed?(person: Person): Promise<void>;
@@ -52,6 +90,14 @@ const DELETED: Record<Lang, string> = {
 };
 
 const SESSION_GAP_MS = 24 * 60 * 60 * 1000;
+const RECENT_TURNS = 12;
+const RECENT_MS = 48 * 60 * 60 * 1000;
+
+const CONFIRM_DELETE: Record<Lang, string> = {
+  en: "Do you want me to delete everything I keep about you? This can't be undone. Reply DELETE to confirm.",
+  es: "¿Quieres que borre todo lo que guardo de ti? No se puede deshacer. Responde BORRAR para confirmar.",
+  fr: "Voulez-vous que j'efface tout ce que je garde sur vous ? C'est irréversible. Répondez EFFACER pour confirmer.",
+};
 
 /**
  * Conversation first: people say what they need in their own words and Escala acts on it. The menu exists
@@ -88,17 +134,29 @@ export class Conversation {
     const word = normalize(text);
     const parsed = Date.parse(m.at);
     const at = Number.isFinite(parsed) ? parsed : Date.now();
-    let p = this.people.get(m.from);
+    let p = this.people.get(m.from) ?? this.deps.store?.load(m.from);
+    if (p) this.people.set(m.from, p);
+    const before = p?.recent?.length ?? 0; // the replies to this message are added after this point
+    try {
+      await this.process(m, text, word, at, p);
+    } finally {
+      const after = this.people.get(m.from);
+      if (after) {
+        if (text) this.rememberInbound(after, text, m.at, after === p ? before : 0);
+        else after.recent = (after.recent ?? []).filter((t) => Date.parse(t.at) >= Date.now() - RECENT_MS).slice(-RECENT_TURNS);
+        this.deps.store?.save(after);
+      }
+    }
+  }
+
+  private async process(m: InboundMessage, text: string, word: string, at: number, p: Person | undefined): Promise<void> {
     const tokens = new Set(word.split(/[^\p{L}'-]+/u).filter(Boolean));
 
     const deleteAll =
       DELETE_ALL_PHRASES.some((w) => word.includes(w)) ||
       (words(text).length <= 3 && DELETE_WORDS.some((w) => (w.includes(" ") ? word.includes(w) : tokens.has(w))));
-    if (deleteAll) {
-      const lang = p?.lang ?? detectLang(text);
-      this.people.delete(m.from);
-      await this.deps.onDelete?.(m.from);
-      return void (await this.deps.channel.send(m.from, { kind: "text", text: DELETED[lang] }));
+    if (deleteAll || (p?.awaiting === "delete_confirm" && words(text).length <= 3 && DELETE_WORDS.some((w) => tokens.has(w)))) {
+      return this.erase(m.from, p?.lang ?? detectLang(text));
     }
 
     if (STOP_WORDS.includes(word) || (words(text).length <= 3 && STOP_WORDS.some((w) => tokens.has(w)))) {
@@ -133,6 +191,17 @@ export class Conversation {
     if (MENU_WORDS.includes(word)) return this.mainMenu(p);
     if (PRIVACY_WORDS.includes(word)) return this.say(p, T[p.lang].privacy);
 
+    // A model that sees the conversation decides what the message is; keywords below are only the fallback.
+    if (this.deps.route && m.kind === "text" && text) {
+      let route: Route | undefined;
+      try {
+        route = await this.deps.route(text, p);
+      } catch {
+        route = undefined;
+      }
+      if (route && (await this.act(route, m, text, p))) return;
+    }
+
     if (p.awaiting === "share" && m.kind === "text") {
       const intent = await this.understand(text, p);
       if (intent === "remember" || intent === "trip_only" || intent === "no") {
@@ -160,11 +229,81 @@ export class Conversation {
     if (!p.trip && this.mayHoldTrip(m) && (await this.readItinerary(m, p))) return;
 
     if (this.deps.agent) {
-      for (const out of await this.deps.agent(m, p)) await this.deps.channel.send(p.id, out);
+      for (const out of await this.deps.agent(m, p)) {
+        await this.deps.channel.send(p.id, out);
+        if ("text" in out && out.kind === "text") this.remember(p, "escala", out.text, new Date().toISOString());
+      }
       return;
     }
     if (!p.trip && m.kind !== "text") return this.say(p, T[p.lang].notReadable);
     return this.say(p, T[p.lang].notYet);
+  }
+
+  /** Acts on what the model read. Returns false when the message should go on to the usual path (the agent). */
+  private async act(route: Route, m: InboundMessage, text: string, p: Person): Promise<boolean> {
+    if (p.awaiting === "delete_confirm" && route.kind !== "delete_all") p.awaiting = null; // they moved on
+    switch (route.kind) {
+      case "stop":
+        p.stage = "stopped";
+        p.awaiting = null;
+        await this.say(p, T[p.lang].stopped);
+        return true;
+      case "delete_all":
+        p.awaiting = "delete_confirm";
+        await this.say(p, CONFIRM_DELETE[p.lang]);
+        return true;
+      case "menu":
+        await this.mainMenu(p);
+        return true;
+      case "privacy":
+        await this.say(p, T[p.lang].privacy);
+        return true;
+      case "share":
+        p.share = route.share;
+        p.shareAsked = true;
+        if (p.awaiting === "share") p.awaiting = null;
+        await this.deps.onShareChanged?.(p);
+        await this.say(p, p.share === "profile" ? T[p.lang].sharedProfile : T[p.lang].sharedTrip);
+        if (!p.trip && !p.pending) await this.say(p, T[p.lang].askItinerary);
+        return true;
+      case "confirm":
+        if (!p.pending) return false;
+        await this.confirm(p);
+        return true;
+      case "fix":
+        if (!p.pending && !p.trip) return false;
+        if (!route.correction) {
+          p.awaiting = "fix";
+          await this.say(p, T[p.lang].fixPrompt);
+          return true;
+        }
+        if (await this.readItinerary(m, p, route.correction)) return true;
+        return false;
+      case "itinerary":
+        return this.readItinerary(m, p);
+      case "other":
+        return false;
+    }
+  }
+
+  private async erase(id: ParticipantId, lang: Lang) {
+    this.people.delete(id);
+    this.deps.store?.delete(id);
+    await this.deps.onDelete?.(id);
+    await this.deps.channel.send(id, { kind: "text", text: DELETED[lang] });
+  }
+
+  /** Adds one of Escala's turns (newest last). Trimming happens once, when the traveler's message is recorded. */
+  private remember(p: Person, role: Turn["role"], text: string, at: string) {
+    p.recent = [...(p.recent ?? []), { role, text: text.slice(0, 1000), at }];
+  }
+
+  /** The traveler's message is recorded after the replies to it were sent, so it goes in front of them. */
+  private rememberInbound(p: Person, text: string, at: string, index: number) {
+    const all = p.recent ?? [];
+    const replies = all.slice(index);
+    const earlier = all.slice(0, index).filter((t) => Date.parse(t.at) >= Date.now() - RECENT_MS);
+    p.recent = [...earlier, { role: "traveler" as const, text: text.slice(0, 1000), at }, ...replies].slice(-RECENT_TURNS);
   }
 
   /**
@@ -178,6 +317,7 @@ export class Conversation {
       const until = lastFlight ? Date.parse(`${lastFlight}T00:00:00Z`) + (claimDays + 1) * 86_400_000 : (p.lastSeen ?? now) + 30 * 86_400_000;
       if (now >= until) {
         this.people.delete(id);
+        this.deps.store?.delete(id);
         n++;
       }
     }
@@ -230,6 +370,7 @@ export class Conversation {
 
   private async say(p: Person, text: string): Promise<void> {
     await this.deps.channel.send(p.id, { kind: "text", text });
+    this.remember(p, "escala", text, new Date().toISOString());
   }
 }
 

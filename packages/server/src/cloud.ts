@@ -66,6 +66,12 @@ export class CloudApiChannel implements ChannelPort {
     await this.handler?.(m);
   }
 
+  /** Restores when a person last wrote (from the stored conversation) after a restart; never moves it forward past now. */
+  noteInbound(p: ParticipantId, atMs: number) {
+    const at = Math.min(atMs, this.opts.now());
+    if (at > (this.lastInbound.get(p) ?? 0)) this.lastInbound.set(p, at);
+  }
+
   windowOpen(p: ParticipantId): boolean {
     const last = this.lastInbound.get(p);
     return last !== undefined && this.opts.now() - last < WINDOW_MS;

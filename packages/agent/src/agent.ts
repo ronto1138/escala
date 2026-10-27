@@ -51,8 +51,8 @@ const STATED_FACTS = [
 ] as const;
 const NUMERIC_FACTS = new Set<string>(["arrival_delay_h", "departure_delay_h", "notice_days", "tarmac_h", "bag_delay_h", "fare"]);
 
-const HISTORY_TURNS = 8;
-const HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
+const HISTORY_TURNS = 10;
+const HISTORY_TTL_MS = 48 * 60 * 60 * 1000;
 
 const NOT_YET_MEDIA: Record<Lang, string> = {
   en: "I got it, but I can't open voice notes or photos here yet. Could you write it to me?",
@@ -224,17 +224,14 @@ export function createEscalaAgent(
   const trace = deps.trace ?? (() => {});
   const longestClaimDays = longestDeadlineDays(deps.entries);
   const asked = new Map<string, string[]>(); // person -> facts already asked about
-  // The last few turns, so an answer can build on what the person said a moment ago ("it was the crew").
-  // Kept in process memory only, dropped after a day of silence and on "delete".
-  const history = new Map<string, { at: number; turns: Array<{ role: "user" | "assistant"; content: string }> }>();
-  const recentTurns = (id: string, at: number) => {
-    const h = history.get(id);
-    return h && at - h.at < HISTORY_TTL_MS ? h.turns : [];
-  };
-  const keepTurn = (id: string, at: number, user: string, assistant: string) => {
-    const turns = [...recentTurns(id, at), { role: "user" as const, content: user }, { role: "assistant" as const, content: assistant }];
-    history.set(id, { at, turns: turns.slice(-HISTORY_TURNS) });
-  };
+  const askedAt = new Map<string, number>();
+  // The last turns come from the conversation (`person.recent`, kept encrypted and across restarts), so an answer can
+  // build on what was said before ("it was the crew"), including Escala's own questions.
+  const recentTurns = (p: Person, at: number) =>
+    (p.recent ?? [])
+      .filter((t) => at - Date.parse(t.at) < HISTORY_TTL_MS)
+      .slice(-HISTORY_TURNS)
+      .map((t) => ({ role: t.role === "traveler" ? ("user" as const) : ("assistant" as const), content: t.text }));
 
   async function extractItinerary(m: InboundMessage, p: Person, correction?: string): Promise<ExtractedTrip | null> {
     const current = (p.pending?.trip ?? p.trip) as Trip | undefined;
@@ -325,13 +322,13 @@ export function createEscalaAgent(
     const allowed: Allowed = { amounts: [], percents: [], durations: extractClaims(m.text).filter((c) => c.kind === "duration").map((c) => c.value) };
     const question = inScope.map((x) => x.text).join(" ");
     const at = Date.parse(m.at) || Date.now();
-    let draft = await answer(question, p, trip, allowed, recentTurns(p.id, at));
+    askedAt.set(p.id, at);
+    let draft = await answer(question, p, trip, allowed, recentTurns(p, at));
     if (!draft.trim()) {
       // The model sometimes spends its whole budget reasoning and writes nothing; WhatsApp rejects empty text.
       trace({ kind: "fallback", reason: "empty answer" });
       draft = SAY_AGAIN[p.lang];
     }
-    keepTurn(p.id, at, question, draft);
     // Learning runs after the answer and never delays it; a failure only means nothing is learned this turn.
     if (deps.learner && deps.memory) void learn(question, p, m.id, m.at, trip).catch((err) => trace({ kind: "fallback", reason: `learning failed: ${String(err).slice(0, 120)}` }));
     replies.push({ kind: "text", text: draft });
@@ -542,15 +539,15 @@ export function createEscalaAgent(
     extractItinerary,
     agent,
     reset(personId: string) {
-      history.delete(personId);
       asked.delete(personId);
+      askedAt.delete(personId);
     },
     /** Drops per-person state after a day of silence. Run on a schedule. */
     sweep(now = Date.now()) {
-      for (const [id, h] of history) {
-        if (now - h.at >= HISTORY_TTL_MS) {
-          history.delete(id);
+      for (const [id, at] of askedAt) {
+        if (now - at >= 24 * 60 * 60 * 1000) {
           asked.delete(id);
+          askedAt.delete(id);
         }
       }
     },

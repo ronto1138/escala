@@ -126,3 +126,56 @@ describe("model fallback (Oct 27: muse-spark-1.3 answered model_not_found)", () 
     expect(usage.lines.filter((l) => l.ok).map((l) => [l.model, l.caller])).toEqual([["muse-spark-1.2", "t+fallback"], ["muse-spark-1.2", "t+fallback"]]);
   });
 });
+
+describe("failsafe: Muse Spark Open when the Meta Model API does not answer", async () => {
+  const { responsesViaOpen } = await import("../src/index.ts");
+  const fakeOpen = (reply: any, seen: any[]) => ({
+    json: async () => ({}),
+    chat: async (body: any, call: any) => (seen.push({ body, call }), { choices: [{ message: reply }] }),
+  });
+
+  it("takes over on an outage, not on our own bad request, and never for SAM", async () => {
+    const seen: any[] = [];
+    let status = 503;
+    const fetchFake = (async () => new Response(JSON.stringify({ error: { code: "x" } }), { status })) as unknown as typeof fetch;
+    const client = createMetaClient({
+      apiKey: "k", usage: memorySink(), fetch: fetchFake, sleep: async () => {}, maxRetries: 0,
+      failsafe: responsesViaOpen(fakeOpen({ content: "from the open model" }, seen) as any),
+    });
+    expect(outputText(await client.responses({ model: "muse-spark-1.3", input: "hi" }, { caller: "agent/loop" }))).toBe("from the open model");
+    expect(seen[0].call.caller).toBe("agent/loop+failsafe");
+    status = 400;
+    const c2 = createMetaClient({ apiKey: "k", usage: memorySink(), fetch: fetchFake, sleep: async () => {}, maxRetries: 0, failsafe: responsesViaOpen(fakeOpen({ content: "x" }, []) as any) });
+    await expect(c2.responses({ model: "muse-spark-1.3", input: "hi" }, { caller: "t" })).rejects.toThrow(/400/);
+    status = 503;
+    await expect(c2.responses({ model: "sam-3.1", input: "scratch" }, { caller: "t" })).rejects.toThrow(/503/);
+  });
+
+  it("translates tools, their results, images and structured output both ways", async () => {
+    const seen: any[] = [];
+    const fs = responsesViaOpen(fakeOpen({ content: null, tool_calls: [{ id: "c2", function: { name: "get_flight_status", arguments: '{"flight":"ZZ1"}' } }] }, seen) as any);
+    const r = await fs(
+      {
+        model: "muse-spark-1.3",
+        instructions: "be brief",
+        input: [
+          { role: "user", content: [{ type: "input_text", text: "status?" }, { type: "input_image", image_url: "data:image/png;base64,AA" }] },
+          { type: "function_call", call_id: "c1", name: "get_flight_status", arguments: "{}" },
+          { type: "function_call_output", call_id: "c1", output: '{"ok":true}' },
+        ],
+        tools: [{ type: "function", name: "get_flight_status", description: "d", parameters: { type: "object" } }],
+        text: { format: { type: "json_schema", name: "s", schema: { type: "object" }, strict: true } },
+        reasoning: { effort: "minimal" },
+      },
+      { caller: "agent/loop" },
+    );
+    const b = seen[0].body;
+    expect(b.messages.map((m: any) => m.role)).toEqual(["system", "user", "assistant", "tool"]);
+    expect(b.messages[1].content[1]).toEqual({ type: "image_url", image_url: { url: "data:image/png;base64,AA" } });
+    expect(b.messages[2].tool_calls[0]).toMatchObject({ id: "c1", function: { name: "get_flight_status" } });
+    expect(b.tools[0]).toMatchObject({ type: "function", function: { name: "get_flight_status" } });
+    expect(b.response_format.type).toBe("json_schema");
+    expect(b.reasoning_effort).toBe("low");
+    expect(r.output).toEqual([{ type: "function_call", call_id: "c2", name: "get_flight_status", arguments: '{"flight":"ZZ1"}' }]);
+  });
+});

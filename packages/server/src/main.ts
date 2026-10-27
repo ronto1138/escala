@@ -5,12 +5,12 @@ import { mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AIRPORTS, createEscalaAgent, longestDeadlineDays, readIntent, type TraceStep } from "@escala/agent";
+import { AIRPORTS, createEscalaAgent, longestDeadlineDays, readIntent, routeMessage, type TraceStep } from "@escala/agent";
 import type { InboundMessage } from "@escala/channel";
-import { Conversation, keywordIntent } from "@escala/conversation";
+import { Conversation, keywordIntent, type Person } from "@escala/conversation";
 import { loadScenario, ReplayClock } from "@escala/feeds";
-import { MemoryCrypto, MemoryStore } from "@escala/memory";
-import { createMetaClient, createOpenModelClient, fileSink, type UsageLine } from "@escala/meta-client";
+import { ConversationStore, MemoryCrypto, MemoryStore } from "@escala/memory";
+import { createMetaClient, createOpenModelClient, fileSink, responsesViaOpen, type UsageLine } from "@escala/meta-client";
 import { loadEntries } from "@escala/rights";
 import { toWav, tripKeywords } from "./audio.ts";
 import { Budget } from "./budget.ts";
@@ -45,10 +45,16 @@ const usage = {
     await usageFile.write(line);
   },
 };
-const client = createMetaClient({ apiKey: need("META_API_KEY"), usage, timeoutMs: 90_000 });
+// Muse Spark Open on Baseten: the memory that learns (D36), and the last line of the failsafe when the Meta Model API
+// does not answer (1.3 → 1.2 → Muse Spark Open; all Meta models). Optional; without the key there is no third line.
+const learner = env.BASETEN_API_KEY ? createOpenModelClient({ apiKey: env.BASETEN_API_KEY, usage, timeoutMs: 60_000 }) : undefined;
+const client = createMetaClient({ apiKey: need("META_API_KEY"), usage, timeoutMs: 90_000, ...(learner ? { failsafe: responsesViaOpen(learner) } : {}) });
 const dbPath = env.MEMORY_DB ?? "data/memory.db";
 mkdirSync(dirname(dbPath), { recursive: true });
-const memory = new MemoryStore({ path: dbPath, crypto: MemoryCrypto.fromEnv() });
+const crypto = MemoryCrypto.fromEnv();
+const memory = new MemoryStore({ path: dbPath, crypto });
+// Where each person is in the conversation, encrypted, so a deploy does not forget a question Escala asked.
+const people = new ConversationStore<Person>({ path: dbPath, crypto });
 // Retention is enforced, not just promised: expired facts are deleted at start and every hour.
 const claimDays = longestDeadlineDays(loadEntries());
 const scenario = fileURLToPath(new URL("../../feeds/scenarios/demo-inbound-late.yaml", import.meta.url));
@@ -56,8 +62,6 @@ const scenario = fileURLToPath(new URL("../../feeds/scenarios/demo-inbound-late.
 // the moment someone confirms a trip with its flights, so changes and their alerts arrive on their own.
 const feed = new ReplayClock(loadScenario(scenario), { secondsPerMinute: Number(env.REPLAY_SECONDS_PER_MINUTE ?? 3) });
 
-// Muse Spark Open on Baseten: the memory that learns (D36). Optional; without the key Escala only remembers on request.
-const learner = env.BASETEN_API_KEY ? createOpenModelClient({ apiKey: env.BASETEN_API_KEY, usage, timeoutMs: 60_000 }) : undefined;
 // What the agent decided, for the operations report: counts and kinds only, never content.
 const escala = createEscalaAgent({
   client, feed, entries: loadEntries(), media: channel, memory, ...(learner ? { learner } : {}),
@@ -65,6 +69,9 @@ const escala = createEscalaAgent({
 });
 const conversation = new Conversation({
   channel,
+  store: people,
+  // What each message is, read by Muse Spark with the conversation as context; keywords only if it fails.
+  route: (text, p) => routeMessage(client, text, p),
   extractItinerary: escala.extractItinerary,
   agent: escala.agent!,
   // Short answers to Escala's questions: keywords first, Muse Spark when they are not enough.
@@ -110,6 +117,12 @@ const conversation = new Conversation({
 // Retention for what lives in this process and in the database, hourly. A failure is logged and retried next hour.
 const sweep = () => {
   try {
+    // People who are not in this process (written before a restart) are loaded so their retention is applied too.
+    for (const p of people.all()) {
+      if (conversation.people.has(p.id)) continue;
+      conversation.people.set(p.id, p);
+      if (p.lastSeen) channel.noteInbound(p.id, p.lastSeen); // the 24-hour window survives the restart too
+    }
     log({ event: "purge", deleted: memory.purgeExpired(), forgotten: conversation.evict(Date.now(), claimDays) });
     escala.sweep();
   } catch (err) {

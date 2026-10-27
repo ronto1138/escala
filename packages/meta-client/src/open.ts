@@ -33,17 +33,27 @@ export function createOpenModelClient(opts: OpenModelOptions) {
 
   /** One structured-output call; returns the parsed JSON. */
   async function json<T = unknown>(req: JsonRequest, call: { caller: string }): Promise<T> {
+    const j = await chat(
+      {
+        max_tokens: req.maxTokens ?? 3000,
+        reasoning_effort: req.effort ?? "low",
+        messages: [
+          { role: "system", content: req.instructions },
+          { role: "user", content: req.input },
+        ],
+        response_format: { type: "json_schema", json_schema: { name: req.schemaName, schema: req.schema, strict: true } },
+      },
+      call,
+    );
+    const content = j.choices?.[0]?.message?.content;
+    if (typeof content !== "string" || !content.trim()) throw new Error("Muse Spark Open returned no content");
+    return JSON.parse(content) as T;
+  }
+
+  /** A raw OpenAI-style chat completion (messages, tools, images, response_format); usage is logged. */
+  async function chat(request: Record<string, unknown>, call: { caller: string }): Promise<any> {
     const started = Date.now();
-    const body = {
-      model: OPEN_MODEL,
-      max_tokens: req.maxTokens ?? 3000,
-      reasoning_effort: req.effort ?? "low",
-      messages: [
-        { role: "system", content: req.instructions },
-        { role: "user", content: req.input },
-      ],
-      response_format: { type: "json_schema", json_schema: { name: req.schemaName, schema: req.schema, strict: true } },
-    };
+    const body = { model: OPEN_MODEL, ...request };
     let res: Response | undefined;
     let text = "";
     let error = "";
@@ -91,12 +101,10 @@ export function createOpenModelClient(opts: OpenModelOptions) {
       ...(ok ? {} : { error: (error || `HTTP ${res?.status}`) + (text ? `: ${text.slice(0, 160)}` : "") }),
     });
     if (!ok) throw new Error(`Muse Spark Open request failed: ${error || `HTTP ${res?.status}`}`);
-    const content = j.choices?.[0]?.message?.content;
-    if (typeof content !== "string" || !content.trim()) throw new Error("Muse Spark Open returned no content");
-    return JSON.parse(content) as T;
+    return j;
   }
 
-  return { json };
+  return { json, chat };
 }
 
 export type OpenModelClient = ReturnType<typeof createOpenModelClient>;

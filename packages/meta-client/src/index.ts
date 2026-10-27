@@ -4,6 +4,7 @@ import { newUsageId, type UsageSink } from "./usage.ts";
 export { MODELS, costUsd, isAllowedModel, type ModelId, type Usage } from "./pricing.ts";
 export { fileSink, memorySink, type UsageLine, type UsageSink } from "./usage.ts";
 export { createOpenModelClient, OPEN_MODEL, OPEN_PRICE, type JsonRequest, type OpenModelClient, type OpenModelOptions } from "./open.ts";
+export { responsesViaOpen } from "./failsafe.ts";
 
 export interface MetaClientOptions {
   apiKey: string;
@@ -19,6 +20,12 @@ export interface MetaClientOptions {
    * retried once with this Standard model, and the original is skipped for ten minutes. Contributor models never appear.
    */
   fallbacks?: Partial<Record<ModelId, ModelId>>;
+  /**
+   * The last resort when the Meta Model API does not answer at all (outage, network, rate limit, key): serve the same
+   * request with another Meta model elsewhere (Muse Spark Open on Baseten, `responsesViaOpen`). Never for a bad request
+   * (400), which is ours to fix, and never for SAM 3.1, which has no substitute.
+   */
+  failsafe?: (req: ResponsesRequest, call: CallOptions) => Promise<any>;
 }
 
 /** Request body for POST /v1/responses. `store` is not accepted from callers: it is always false. */
@@ -65,7 +72,21 @@ export function createMetaClient(opts: MetaClientOptions) {
   const fallbacks: Partial<Record<ModelId, ModelId>> = opts.fallbacks ?? { "muse-spark-1.3": "muse-spark-1.2" };
   const unavailableUntil = new Map<string, number>();
 
+  let metaDownUntil = 0;
+
   async function responses(req: ResponsesRequest, call: CallOptions): Promise<any> {
+    const canFailsafe = !!opts.failsafe && req.model !== "sam-3.1";
+    if (canFailsafe && Date.now() < metaDownUntil) return opts.failsafe!(req, call);
+    try {
+      return await viaMeta(req, call);
+    } catch (err) {
+      if (!canFailsafe || !metaUnavailable(err)) throw err;
+      metaDownUntil = Date.now() + 2 * 60_000; // do not wait on Meta for every message while it is down
+      return opts.failsafe!(req, call);
+    }
+  }
+
+  async function viaMeta(req: ResponsesRequest, call: CallOptions): Promise<any> {
     const alt = isAllowedModel(req.model) ? fallbacks[req.model] : undefined;
     if (alt && (unavailableUntil.get(req.model) ?? 0) > Date.now()) return once({ ...req, model: alt }, { ...call, caller: `${call.caller}+fallback` });
     try {
@@ -227,6 +248,12 @@ export function createMetaClient(opts: MetaClientOptions) {
 }
 
 export type MetaClient = ReturnType<typeof createMetaClient>;
+
+/** Meta did not serve the request for reasons that are not ours: down, unreachable, throttled, key refused, model gone. */
+function metaUnavailable(err: unknown): boolean {
+  if (!(err instanceof MetaApiError)) return false;
+  return err.status === 0 || err.status === 401 || err.status === 403 || err.status === 404 || err.status === 408 || err.status === 429 || err.status >= 500;
+}
 
 /** Concatenated output text of a Responses API result. */
 export function outputText(response: any): string {
