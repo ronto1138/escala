@@ -29,6 +29,7 @@ export const tag = (id: string) => createHmac("sha256", TAG_KEY).update(id).dige
  */
 export function createWebhookHandler(opts: WebhookOptions) {
   const log = opts.log ?? (() => {});
+  const probeTag = createHash("sha256").update(`probe:${opts.verifyToken}`).digest("hex").slice(0, 16);
   const seen = new Set<string>();
   const remember = (id: string) => {
     seen.add(id);
@@ -60,9 +61,9 @@ export function createWebhookHandler(opts: WebhookOptions) {
       return ok ? reply(200, url.searchParams.get("hub.challenge") ?? "") : reply(403);
     }
     if (req.method !== "POST") return reply(405);
-    // Our own checks (deploy script, operations report) say so; they are refused exactly the same way, and only
-    // labelled, so the report can tell them from someone else probing the webhook.
-    const probe = req.headers["x-escala-probe"] === "1";
+    // Our own checks (deploy script, operations report) carry a value only we can compute; they are refused exactly
+    // the same way, and only labelled, so the report can tell them from someone else probing the webhook.
+    const probe = req.headers["x-escala-probe"] === probeTag;
     if (!opts.appSecret) {
       log({ event: "refused", why: "no app secret configured", ...(probe ? { probe } : {}) });
       return reply(503);
