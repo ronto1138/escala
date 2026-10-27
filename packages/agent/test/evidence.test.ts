@@ -27,3 +27,17 @@ describe("evidence reply", () => {
     expect(same).toMatch(/je ne vois pas de nouveau dommage/);
   });
 });
+
+describe("Oct 27 field test: SAM 3.1 down while the photo is read", async () => {
+  const { readEvidence } = await import("../src/index.ts");
+  it("still answers with the description, without counting marks", async () => {
+    const client = {
+      responses: async (req: any) => {
+        if (req.model === "sam-3.1") throw new Error("Meta API request failed: HTTP 404 model_not_found");
+        return { output_text: JSON.stringify({ object: "bag", description: "Maleta verde", visible_damage: ["rayón"], new_damage: [] }) };
+      },
+    } as any;
+    const r = await readEvidence(client, "data:image/jpeg;base64,AAAA", "es");
+    expect(r).toMatchObject({ object: "bag", marks: {}, marksUnavailable: true, visibleDamage: ["rayón"] });
+  });
+});

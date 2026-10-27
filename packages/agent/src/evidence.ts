@@ -20,6 +20,8 @@ export interface EvidenceReading {
   newDamage?: string[];
   /** Marks SAM 3.1 segmented, by concept ("scratch": 2). */
   marks: Record<string, number>;
+  /** SAM 3.1 could not be reached; the marks were not counted this time. */
+  marksUnavailable?: boolean;
   photoSha256: string;
 }
 
@@ -74,7 +76,16 @@ export async function readEvidence(
       : {}),
   };
   if (reading.object === "other") return reading;
-  for (const concept of MARK_CONCEPTS) reading.marks[concept] = await countMarks(client, imageDataUrl, concept);
+  // SAM 3.1 has no substitute: if it is down, the evidence is still recorded and answered, only without the count.
+  for (const concept of MARK_CONCEPTS) {
+    try {
+      reading.marks[concept] = await countMarks(client, imageDataUrl, concept);
+    } catch {
+      reading.marks = {};
+      reading.marksUnavailable = true;
+      break;
+    }
+  }
   return reading;
 }
 
