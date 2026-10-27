@@ -5,9 +5,9 @@ import { mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AIRPORTS, createEscalaAgent, longestDeadlineDays, type TraceStep } from "@escala/agent";
+import { AIRPORTS, createEscalaAgent, longestDeadlineDays, readIntent, type TraceStep } from "@escala/agent";
 import type { InboundMessage } from "@escala/channel";
-import { Conversation } from "@escala/conversation";
+import { Conversation, keywordIntent } from "@escala/conversation";
 import { loadScenario, ReplayClock } from "@escala/feeds";
 import { MemoryCrypto, MemoryStore } from "@escala/memory";
 import { createMetaClient, createOpenModelClient, fileSink, type UsageLine } from "@escala/meta-client";
@@ -67,6 +67,17 @@ const conversation = new Conversation({
   channel,
   extractItinerary: escala.extractItinerary,
   agent: escala.agent!,
+  // Short answers to Escala's questions: keywords first, Muse Spark when they are not enough.
+  understand: async (text, p) => {
+    const k = keywordIntent(text, p.lang);
+    if (k !== "other") return k;
+    try {
+      return await readIntent(client, text, p.lang, p.awaiting);
+    } catch (err) {
+      log({ event: "error", why: "intent", error: String(err).slice(0, 120) });
+      return "other";
+    }
+  },
   // Voice notes: download, convert in memory, transcribe with the trip's places as hints. Audio is never stored.
   transcribe: async (m, p) => {
     try {

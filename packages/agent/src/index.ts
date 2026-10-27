@@ -1,6 +1,7 @@
 export { createEscalaAgent, longestDeadlineDays, tripFactExpiry, type AgentDeps, type TraceStep } from "./agent.ts";
 export { evidenceReply, readEvidence, type EvidenceObject, type EvidenceReading } from "./evidence.ts";
 export { dayLabel, legLine, timeLabel } from "./format.ts";
+export { readIntent } from "./intent.ts";
 export { acceptCandidates, LEARN_TOPICS, proposeFacts, type Accepted, type Candidate } from "./learner.ts";
 export { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
 export { AIRLINES, AIRPORTS, type Airlines, factsFor, greatCircleKm, journeys, type Leg, type Trip } from "./trip.ts";

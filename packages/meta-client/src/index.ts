@@ -14,6 +14,11 @@ export interface MetaClientOptions {
   fetch?: typeof fetch;
   /** Injected so tests do not wait. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * When a model answers "model_not_found" (Meta stopped serving muse-spark-1.3 for a while on 2026-10-27), the call is
+   * retried once with this Standard model, and the original is skipped for ten minutes. Contributor models never appear.
+   */
+  fallbacks?: Partial<Record<ModelId, ModelId>>;
 }
 
 /** Request body for POST /v1/responses. `store` is not accepted from callers: it is always false. */
@@ -57,7 +62,22 @@ export function createMetaClient(opts: MetaClientOptions) {
   const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   if (!opts.apiKey) throw new Error("META_API_KEY is missing");
 
+  const fallbacks: Partial<Record<ModelId, ModelId>> = opts.fallbacks ?? { "muse-spark-1.3": "muse-spark-1.2" };
+  const unavailableUntil = new Map<string, number>();
+
   async function responses(req: ResponsesRequest, call: CallOptions): Promise<any> {
+    const alt = isAllowedModel(req.model) ? fallbacks[req.model] : undefined;
+    if (alt && (unavailableUntil.get(req.model) ?? 0) > Date.now()) return once({ ...req, model: alt }, { ...call, caller: `${call.caller}+fallback` });
+    try {
+      return await once(req, call);
+    } catch (err) {
+      if (!alt || !(err instanceof MetaApiError) || err.status !== 404 || !/model_not_found/.test(err.body)) throw err;
+      unavailableUntil.set(req.model, Date.now() + 10 * 60_000);
+      return once({ ...req, model: alt }, { ...call, caller: `${call.caller}+fallback` });
+    }
+  }
+
+  async function once(req: ResponsesRequest, call: CallOptions): Promise<any> {
     if (!isAllowedModel(req.model)) throw new Error(`model not allowed: ${req.model}`);
     const model: ModelId = req.model;
     const body = JSON.stringify({ ...req, store: false });

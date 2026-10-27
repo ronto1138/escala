@@ -107,3 +107,22 @@ describe("Muse Spark Open on Baseten", async () => {
     expect(usage.lines[0]!.cost_usd).toBeCloseTo((1000 * 1.25 + 200 * 4.25) / 1e6, 6);
   });
 });
+
+describe("model fallback (Oct 27: muse-spark-1.3 answered model_not_found)", () => {
+  it("retries once with muse-spark-1.2 and skips 1.3 for a while", async () => {
+    const asked: string[] = [];
+    const fetchFake = (async (_url: string, init: any) => {
+      const m = JSON.parse(init.body).model;
+      asked.push(m);
+      return m === "muse-spark-1.3"
+        ? new Response(JSON.stringify({ error: { code: "model_not_found" } }), { status: 404 })
+        : new Response(JSON.stringify({ output_text: "ok", usage: { input_tokens: 10, output_tokens: 2 } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const usage = memorySink();
+    const client = createMetaClient({ apiKey: "k", usage, fetch: fetchFake, sleep: async () => {} });
+    expect(outputText(await client.responses({ model: "muse-spark-1.3", input: "x" }, { caller: "t" }))).toBe("ok");
+    await client.responses({ model: "muse-spark-1.3", input: "y" }, { caller: "t" });
+    expect(asked).toEqual(["muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.2"]);
+    expect(usage.lines.filter((l) => l.ok).map((l) => [l.model, l.caller])).toEqual([["muse-spark-1.2", "t+fallback"], ["muse-spark-1.2", "t+fallback"]]);
+  });
+});

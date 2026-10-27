@@ -249,3 +249,13 @@ describe("buttons and menu rows are the person's words", () => {
     expect(seen).toEqual(["¿Qué significa?", "Estado del vuelo"]);
   });
 });
+
+describe("Oct 27 field test: 'puedes acordarte de todo'", () => {
+  it("is read as 'remember' in Spanish, and the French and English equivalents too", () => {
+    expect(keywordIntent("puedes acordarte de todo", "es")).toBe("remember");
+    expect(keywordIntent("tu peux tout retenir", "fr")).toBe("remember");
+    expect(keywordIntent("remember everything", "en")).toBe("remember");
+    expect(keywordIntent("solo este viaje", "es")).toBe("trip_only");
+    expect(keywordIntent("sí, está todo bien", "es")).toBe("yes"); // "todo" alone is not "remember"
+  });
+});
