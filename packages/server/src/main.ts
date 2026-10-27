@@ -16,7 +16,7 @@ import { toWav, tripKeywords } from "./audio.ts";
 import { Budget } from "./budget.ts";
 import { CloudApiChannel } from "./cloud.ts";
 import { createNotifier } from "./notifier.ts";
-import { createTestPhase, NOT_ENROLLED } from "./testers.ts";
+import { createTestPhase, NOT_ENROLLED, SqliteTesterStore, TEST_NOTICE } from "./testers.ts";
 import { createWebhookHandler, tag } from "./webhook.ts";
 
 const env = process.env;
@@ -58,6 +58,8 @@ const crypto = MemoryCrypto.fromEnv();
 const testers = createTestPhase({
   masterKey: Buffer.from(need("ESCALA_MEMORY_KEY"), "base64"),
   enrolled: env.ESCALA_TESTERS,
+  invites: env.ESCALA_INVITES,
+  store: new SqliteTesterStore(dbPath),
   publicKey: env.TRANSCRIPT_PUBLIC_KEY,
   until: env.TRANSCRIPT_UNTIL,
   log,
@@ -150,7 +152,16 @@ const MAX_PENDING_PER_PERSON = 5;
 const queues = new Map<string, Promise<void>>();
 const pending = new Map<string, number>();
 const turnedAway = new Set<string>();
-const deliver = (m: InboundMessage) => {
+const deliver = (incoming: InboundMessage) => {
+  let m = incoming;
+  let notice = false;
+  if (!testers.allowed(m.from)) {
+    const redeemed = testers.redeem(m);
+    if (redeemed) {
+      m = redeemed;
+      notice = true;
+    }
+  }
   if (!testers.allowed(m.from)) {
     log({ event: "not_enrolled", from: tag(m.from) });
     if (!turnedAway.has(m.from) && turnedAway.size < MAX_QUEUES && budget.allow(m.from, "text")) {
@@ -168,6 +179,7 @@ const deliver = (m: InboundMessage) => {
   pending.set(m.from, (pending.get(m.from) ?? 0) + 1);
   const received = Date.now();
   const next = (queues.get(m.from) ?? Promise.resolve())
+    .then(() => (notice ? channel.send(m.from, { kind: "text", text: TEST_NOTICE }).then(() => undefined) : undefined))
     .then(() => channel.deliver(m))
     .then(() => log({ event: "handled", from: tag(m.from), kind: m.kind, ms: Date.now() - received }))
     .catch((err) => log({ event: "error", from: tag(m.from), error: String(err).slice(0, 200) }))
@@ -210,7 +222,7 @@ const server = createServer((req, res) =>
 server.headersTimeout = 10_000;
 server.requestTimeout = 30_000;
 server.listen(port, host, () => {
-  log({ event: "listening", host, port, signed_deliveries: Boolean(env.WHATSAPP_APP_SECRET), testers: testers.enrolledCount, transcribing: testers.transcribing });
+  log({ event: "listening", host, port, signed_deliveries: Boolean(env.WHATSAPP_APP_SECRET), testers: testers.enrolledCount, invites: testers.invites, transcribing: testers.transcribing });
 });
 
 /** One agent step as a log event, without any content: how many parts, blocked figures, tool names, outcomes. */

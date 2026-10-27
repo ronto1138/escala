@@ -1,4 +1,5 @@
 import { constants, createCipheriv, createDecipheriv, createHmac, privateDecrypt, publicEncrypt, randomBytes } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import type { InboundMessage, OutboundMessage } from "@escala/channel";
 
 /**
@@ -84,10 +85,55 @@ export function outboundText(m: OutboundMessage): { kind: string; text: string }
   }
 }
 
+/** Numbers that enrolled themselves with an invitation code (the QR shared with the judges), kept across deploys. */
+export interface TesterStore {
+  has(ref: string): boolean;
+  add(ref: string, label: string, at: Date): void;
+  count(label: string): number;
+}
+
+/** Self-enrolled testers in the server's database: the keyed ref and the invitation label, never the number. */
+export class SqliteTesterStore implements TesterStore {
+  private readonly db: DatabaseSync;
+  constructor(path: string) {
+    this.db = new DatabaseSync(path);
+    this.db.exec("CREATE TABLE IF NOT EXISTS testers (ref TEXT PRIMARY KEY, label TEXT NOT NULL, enrolled_at TEXT NOT NULL)");
+  }
+  has(ref: string) {
+    return Boolean(this.db.prepare("SELECT 1 FROM testers WHERE ref = ?").get(ref));
+  }
+  add(ref: string, label: string, at: Date) {
+    this.db.prepare("INSERT OR IGNORE INTO testers(ref, label, enrolled_at) VALUES (?, ?, ?)").run(ref, label, at.toISOString());
+  }
+  count(label: string) {
+    return (this.db.prepare("SELECT COUNT(*) AS n FROM testers WHERE label = ?").get(label) as { n: number }).n;
+  }
+}
+
+export interface Invite {
+  label: string;
+  code: string;
+  /** Last day (YYYY-MM-DD, UTC) the code enrolls someone. */
+  until: string;
+  max: number;
+}
+
+/** ESCALA_INVITES: `label:code:YYYY-MM-DD:max`, separated by `;`. Malformed entries are ignored. */
+export function parseInvites(raw: string | undefined): Invite[] {
+  return (raw ?? "")
+    .split(";")
+    .map((e) => e.trim().split(":"))
+    .filter((p) => p.length === 4 && /^[a-z0-9-]{2,24}$/.test(p[0]!) && /^[A-Z0-9-]{8,32}$/.test(p[1]!) && /^\d{4}-\d{2}-\d{2}$/.test(p[2]!) && Number(p[3]) > 0)
+    .map(([label, code, until, max]) => ({ label: label!, code: code!, until: until!, max: Number(max) }));
+}
+
 export interface TestPhaseOptions {
   masterKey: Buffer;
-  /** Comma-separated tester refs. Empty or missing: anyone may write and nothing is transcribed. */
+  /** Comma-separated tester refs. With no refs and no invitations, anyone may write and nothing is transcribed. */
   enrolled: string | undefined;
+  /** Invitation codes that enroll whoever sends one (see parseInvites). */
+  invites?: string | undefined;
+  store?: TesterStore;
   /** PEM, or PEM in base64. Missing: no transcript. */
   publicKey: string | undefined;
   /** Last day (YYYY-MM-DD, UTC) transcripts are written; extended by changing the variable. */
@@ -98,13 +144,18 @@ export interface TestPhaseOptions {
 
 export function createTestPhase(o: TestPhaseOptions) {
   const enrolled = new Set((o.enrolled ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+  const invites = parseInvites(o.invites);
   const pem = o.publicKey && (o.publicKey.includes("BEGIN") ? o.publicKey : Buffer.from(o.publicKey, "base64").toString("utf8"));
   const until = Date.parse(`${o.until ?? "2026-11-30"}T23:59:59Z`);
   const now = o.now ?? (() => new Date());
   const ref = (id: string) => testerRef(o.masterKey, id);
-  const closed = enrolled.size > 0;
-  const allowed = (id: string) => !closed || enrolled.has(ref(id));
-  const recording = (id: string) => Boolean(pem) && closed && enrolled.has(ref(id)) && now().getTime() <= until;
+  const closed = enrolled.size > 0 || invites.length > 0;
+  const isTester = (id: string) => {
+    const r = ref(id);
+    return enrolled.has(r) || Boolean(o.store?.has(r));
+  };
+  const allowed = (id: string) => !closed || isTester(id);
+  const recording = (id: string) => Boolean(pem) && closed && isTester(id) && now().getTime() <= until;
   const write = (id: string, r: Omit<TranscriptRecord, "who" | "at">) => {
     if (!recording(id)) return;
     try {
@@ -113,11 +164,32 @@ export function createTestPhase(o: TestPhaseOptions) {
       o.log({ event: "error", why: "transcript", error: String(err).slice(0, 80) });
     }
   };
+  /**
+   * A message from someone not enrolled that carries a live invitation code enrolls them. Returns the message without
+   * the code (so the conversation reads the greeting), or null when there is no usable code.
+   */
+  const redeem = (m: InboundMessage): InboundMessage | null => {
+    if (m.kind !== "text" || !o.store) return null;
+    const words = m.text.toUpperCase().split(/[^A-Z0-9-]+/);
+    const today = now().toISOString().slice(0, 10);
+    const invite = invites.find((i) => words.includes(i.code));
+    if (!invite) return null;
+    if (invite.until < today || o.store.count(invite.label) >= invite.max) {
+      o.log({ event: "invite_refused", label: invite.label, why: invite.until < today ? "expired" : "full" });
+      return null;
+    }
+    o.store.add(ref(m.from), invite.label, now());
+    o.log({ event: "enrolled", label: invite.label });
+    const text = m.text.replace(new RegExp(`\\b${invite.code}\\b`, "gi"), "").replace(/\s{2,}/g, " ").trim();
+    return { ...m, text: text || "Hi" };
+  };
   return {
     closed,
     enrolledCount: enrolled.size,
+    invites: invites.length,
     transcribing: Boolean(pem) && closed,
     allowed,
+    redeem,
     ref,
     inbound: (m: InboundMessage) => write(m.from, { dir: "in", ...inboundText(m) }),
     outbound: (to: string, m: OutboundMessage) => write(to, { dir: "out", ...outboundText(m) }),
@@ -129,3 +201,7 @@ export function createTestPhase(o: TestPhaseOptions) {
 /** The one answer someone who is not enrolled gets, once per restart. */
 export const NOT_ENROLLED =
   "Escala is in a private test right now, open only to people the team has invited. / Escala está en una prueba privada, solo para personas invitadas por el equipo.";
+
+/** What someone who joins with an invitation code reads first (Ives tells the others in person). */
+export const TEST_NOTICE =
+  "Test phase: the Kokorio team reads conversations to improve Escala, and Meta may use them while we use free credits. Use made-up details.";

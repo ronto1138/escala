@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { canonicalNumber, createTestPhase, open, seal, testerRef } from "../src/testers.ts";
+import { canonicalNumber, createTestPhase, open, parseInvites, seal, testerRef } from "../src/testers.ts";
 
 const { publicKey, privateKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048,
@@ -64,5 +64,36 @@ describe("test phase", () => {
   it("round-trips a record", () => {
     const r = { who: "ab", at: "t", dir: "forget" as const };
     expect(open(privateKey, seal(publicKey, r))).toEqual(r);
+  });
+});
+
+describe("invitation codes", () => {
+  const memoryStore = () => {
+    const rows = new Map<string, string>();
+    return { has: (r: string) => rows.has(r), add: (r: string, l: string) => void rows.set(r, l), count: (l: string) => [...rows.values()].filter((x) => x === l).length };
+  };
+  const make = (store = memoryStore(), invites = "juez:JUEZ-ABC123:2026-11-20:2") =>
+    createTestPhase({ masterKey: master, enrolled: "", invites, store, publicKey: undefined, until: undefined, log: () => {}, now: () => new Date("2026-10-28T12:00:00Z") });
+
+  it("closes the door once an invitation exists, and the code opens it", () => {
+    const t = make();
+    expect(t.allowed(stranger)).toBe(false);
+    const m = t.redeem({ id: "1", from: stranger, at: "", kind: "text", text: "Hi Escala! juez-abc123" });
+    expect(m && m.kind === "text" && m.text).toBe("Hi Escala!");
+    expect(t.allowed(stranger)).toBe(true);
+  });
+
+  it("refuses a wrong, expired or used-up code", () => {
+    const store = memoryStore();
+    const t = make(store);
+    expect(t.redeem({ id: "1", from: stranger, at: "", kind: "text", text: "JUEZ-ABC124" })).toBeNull();
+    t.redeem({ id: "1", from: "15550000003", at: "", kind: "text", text: "JUEZ-ABC123" });
+    t.redeem({ id: "2", from: "15550000004", at: "", kind: "text", text: "JUEZ-ABC123" });
+    expect(t.redeem({ id: "3", from: stranger, at: "", kind: "text", text: "JUEZ-ABC123" })).toBeNull();
+    expect(make(memoryStore(), "juez:JUEZ-ABC123:2026-10-27:5").redeem({ id: "1", from: stranger, at: "", kind: "text", text: "JUEZ-ABC123" })).toBeNull();
+  });
+
+  it("ignores malformed invitations", () => {
+    expect(parseInvites("juez:short:2026-11-20:5;x:JUEZ-ABC123:soon:5;ok-1:JUEZ-ABC123:2026-11-20:5")).toEqual([{ label: "ok-1", code: "JUEZ-ABC123", until: "2026-11-20", max: 5 }]);
   });
 });
