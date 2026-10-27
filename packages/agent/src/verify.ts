@@ -112,7 +112,8 @@ export function extractClaims(text: string): Claim[] {
 }
 
 export function verify(draft: string, allowed: Allowed): Verdict {
-  const claims = extractClaims(draft);
+  // Links are not claims: a map link carries coordinates and "%2C", a source link carries dates and ids.
+  const claims = extractClaims(draft.replace(/https?:\/\/\S+/g, " "));
   const unmatched = claims.filter((c) => {
     if (c.kind === "number_word") return true; // cannot be checked: rewrite with digits
     if (c.kind === "percent") return !allowed.percents.includes(c.value);

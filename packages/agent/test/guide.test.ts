@@ -53,3 +53,24 @@ describe("web guide", () => {
     expect(RIGHTS_TOPIC.test("best poutine near the hotel")).toBe(false);
   });
 });
+
+describe("maps links", () => {
+  it("opens directions from the shared location, or a place search, encoded", async () => {
+    const { mapsLink } = await import("../src/guide.ts");
+    expect(mapsLink({ destination: "La Capital Tacos, Montreal", origin: { lat: 45.5048, lon: -73.5772 }, mode: "walking", directions: true })).toBe(
+      "https://www.google.com/maps/dir/?api=1&origin=45.50480%2C-73.57720&destination=La%20Capital%20Tacos%2C%20Montreal&travelmode=walking",
+    );
+    expect(mapsLink({ destination: "YUL", directions: true })).toBe("https://www.google.com/maps/dir/?api=1&destination=YUL");
+    expect(mapsLink({ destination: "Théâtre St-Denis", directions: false })).toBe("https://www.google.com/maps/search/?api=1&query=Th%C3%A9%C3%A2tre%20St-Denis");
+  });
+});
+
+describe("WhatsApp formatting", () => {
+  it("turns Markdown links and bold into what WhatsApp shows", async () => {
+    const { forWhatsApp } = await import("../src/format.ts");
+    expect(forWhatsApp("* **Escondite** - tacos\n[Cómo llegar](https://www.google.com/maps/dir/?api=1&destination=X)")).toBe(
+      "* *Escondite* - tacos\nCómo llegar: https://www.google.com/maps/dir/?api=1&destination=X",
+    );
+    expect(forWhatsApp("## Para cenar\nok")).toBe("Para cenar\nok");
+  });
+});

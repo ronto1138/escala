@@ -4,9 +4,9 @@ import { arrivalMinutesLate, inboundDelayMinutes, type FlightFeed } from "@escal
 import { outputText, type MetaClient, type OpenModelClient } from "@escala/meta-client";
 import { ConsentError, tripRetention, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
-import { legLine } from "./format.ts";
+import { forWhatsApp, legLine } from "./format.ts";
 import { evidenceReply, readEvidence, type EvidenceObject } from "./evidence.ts";
-import { convertUnits, RIGHTS_TOPIC, searchTravel, UNIT_NAMES, type createRates } from "./guide.ts";
+import { convertUnits, mapsLink, RIGHTS_TOPIC, searchTravel, UNIT_NAMES, type createRates } from "./guide.ts";
 import { createChecking, describeLocation, locationIsFresh, usableCheckingLine } from "./whereabouts.ts";
 import { acceptCandidates, proposeFacts } from "./learner.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
@@ -207,6 +207,24 @@ const TOOLS = [
       properties: {
         query: { type: "string", description: "what to find, specific: dates, times, airport terminals, budget, who travels" },
         place: { type: ["string", "null"], description: "city or airport of the trip it is about" },
+      },
+    },
+    strict: true,
+  },
+  {
+    type: "function",
+    name: "maps_link",
+    description:
+      "A Google Maps link the traveler taps to follow the route in their own Maps app (or to see a place). " +
+      "Use it for every place you recommend and every 'how do I get to…'; never write a maps link yourself.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["destination", "mode", "directions"],
+      properties: {
+        destination: { type: "string", description: "place name with its city, or its address, as a source gave it, e.g. 'La Capital Tacos, Montreal'" },
+        mode: { type: ["string", "null"], enum: ["transit", "walking", "driving", null], description: "how they will go; null lets Maps choose" },
+        directions: { type: "boolean", description: "true for a route from where they are; false to just show the place" },
       },
     },
     strict: true,
@@ -419,7 +437,7 @@ export function createEscalaAgent(
       "Ask at most one question, and only the one rights_for_trip returned or one needed to answer; don't end with offers phrased as questions. " +
       "You give information with sources, not legal advice; never promise compensation. Never book anything. " +
       "For getting around, places, food, stays, events, tours, airport layout or safety, call search_travel_info and offer what it found as a suggestion, " +
-      "naming the source and the day it was checked, with at most two of its links at the end. If it says 'unconfirmed', or sources disagree, say plainly that you could not confirm it. " +
+      "naming the source and the day it was checked, with at most two of its links at the end. Next to each place or route, put its maps_link so they can follow it with their GPS. If it says 'unconfirmed', or sources disagree, say plainly that you could not confirm it. " +
       "Never present something from the web as certain. Use convert for currencies and measures; currency results are reference rates of the date it gives, not what a bank charges. " +
       `Trip: ${tripText}.` +
       (deps.memory
@@ -470,7 +488,7 @@ export function createEscalaAgent(
     for (let attempt = 1; attempt <= 2; attempt++) {
       const verdict = verify(text, allowed);
       trace({ kind: "verify", attempt, verdict, draft: text });
-      if (verdict.ok) return text;
+      if (verdict.ok) return forWhatsApp(text);
       if (attempt === 2) break;
       const r = await deps.client.responses(
         {
@@ -510,6 +528,14 @@ export function createEscalaAgent(
         if (c.kind === "duration") allowed.durations.push(c.value);
       }
       return found;
+    }
+    if (name === "maps_link") {
+      const destination = String(args.destination ?? "").trim();
+      if (!destination) return { error: "destination is required" };
+      const now = Date.parse(currentMessage.at) || Date.now();
+      const origin = locationIsFresh(p.location, now) ? { lat: p.location.lat, lon: p.location.lon } : undefined;
+      const mode = ["transit", "walking", "driving"].includes(args.mode) ? args.mode : null;
+      return { url: mapsLink({ destination, mode, directions: args.directions !== false, ...(origin ? { origin } : {}) }), from: origin ? "their shared location" : "where their phone is" };
     }
     if (name === "convert") {
       const value = Number(args.value);

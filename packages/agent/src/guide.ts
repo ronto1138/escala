@@ -132,3 +132,20 @@ export function createRates(fetchXml: () => Promise<string> = async () => {
     };
   };
 }
+
+// ---------- Google Maps links: open directions or a place in the traveler's own Maps app (no API key, no cost).
+
+export type TravelMode = "transit" | "walking" | "driving";
+
+/**
+ * A Maps URL (https://developers.google.com/maps/documentation/urls/get-started): directions to the place, from the
+ * shared location if there is one (otherwise Maps starts from where the phone is), or a search link for the place.
+ * Built in code so a link is never invented.
+ */
+export function mapsLink(o: { destination: string; origin?: { lat: number; lon: number }; mode?: TravelMode | null; directions: boolean }): string {
+  const q = (v: string) => encodeURIComponent(v.slice(0, 200));
+  if (!o.directions) return `https://www.google.com/maps/search/?api=1&query=${q(o.destination)}`;
+  const origin = o.origin ? `&origin=${q(`${o.origin.lat.toFixed(5)},${o.origin.lon.toFixed(5)}`)}` : "";
+  const mode = o.mode ? `&travelmode=${o.mode}` : "";
+  return `https://www.google.com/maps/dir/?api=1${origin}&destination=${q(o.destination)}${mode}`;
+}

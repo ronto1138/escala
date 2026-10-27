@@ -1,6 +1,6 @@
 export { createEscalaAgent, longestDeadlineDays, tripFactExpiry, type AgentDeps, type TraceStep } from "./agent.ts";
 export { evidenceReply, readEvidence, type EvidenceObject, type EvidenceReading } from "./evidence.ts";
-export { dayLabel, legLine, timeLabel } from "./format.ts";
+export { dayLabel, forWhatsApp, legLine, timeLabel } from "./format.ts";
 export { readIntent } from "./intent.ts";
 export { routeMessage } from "./route.ts";
 export { acceptCandidates, LEARN_TOPICS, proposeFacts, type Accepted, type Candidate } from "./learner.ts";

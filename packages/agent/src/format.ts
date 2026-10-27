@@ -22,3 +22,15 @@ export function legLine(l: Leg, lang: Lang): string {
   const flight = l.flight.replace(/^([A-Z0-9]{2})(\d)/, "$1 $2");
   return `${flight} · ${dayLabel(l.date, lang)} · ${city(l.from)} ${timeLabel(l.dep_local, lang)} → ${city(l.to)} ${timeLabel(l.arr_local, lang)}`;
 }
+
+/**
+ * WhatsApp shows plain text with its own marks (*bold*, _italic_): a Markdown link becomes "label: url" so the URL
+ * stays tappable, "**bold**" becomes "*bold*", and Markdown headings lose their "#".
+ */
+export function forWhatsApp(text: string): string {
+  return text
+    .replace(/\[([^\]\n]{1,80})\]\((https?:\/\/[^)\s]+)\)/g, "$1: $2")
+    .replace(/\*\*([^*\n]+)\*\*/g, "*$1*")
+    .replace(/^#{1,6}\s+/gm, "");
+}
+

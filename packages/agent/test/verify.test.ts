@@ -149,3 +149,11 @@ describe("a source's bare dollar sign", () => {
     expect(verify("Taxi: 50 CAD", { amounts: [{ currency: "$", value: 49.45 }], percents: [], durations: [] }).ok).toBe(false);
   });
 });
+
+describe("links", () => {
+  it("are not read as figures", () => {
+    const none = { amounts: [], percents: [], durations: [] };
+    expect(verify("Go: https://www.google.com/maps/dir/?api=1&origin=45.50480%2C-73.57720&destination=X", none).ok).toBe(true);
+    expect(verify("It costs 20% more https://example.com", none).ok).toBe(false);
+  });
+});
