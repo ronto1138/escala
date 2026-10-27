@@ -163,6 +163,8 @@ describe("privacy policy page", () => {
     const html = await r.text();
     expect(html).toContain("Kokorio, S.A.P.I. de C.V.");
     expect(html).toMatch(/not end-to-end encrypted/);
+    expect(html).toMatch(/Use made-up details only/); // hackathon: free credits, Meta may use content
+    expect(html).not.toMatch(/never in the contributor mode/);
     expect(html).toMatch(/Delete everything/);
     expect(html).toContain(`id="delete"`); // the data deletion URL given to Meta points here
   });

@@ -63,7 +63,7 @@ export const T: Record<Lang, Texts> = {
   en: {
     hello:
       "Hi! I'm Escala, your travel companion. I'm an AI, here only for your trip: flights, connections, bags, plans, whatever comes up on the way.\n\n" +
-      "What you tell me is stored encrypted, never used to train models or for ads, and you can see or delete it anytime. Just ask.",
+      "This is a test version for Meta's hackathon: please use made-up details. What you tell me is stored encrypted, and you can see or delete it anytime.",
     welcomeBack: "Hi again! How can I help with your trip? You can always ask me what I keep about you, or to delete it.",
     shareQuestion: "One thing before we start: should I remember only this trip, or also learn how you like to travel so I can help you better next time?",
     sharedTrip: "Got it, just this trip. I'll delete it when the trip and any claim deadlines are over.",
@@ -77,7 +77,8 @@ export const T: Record<Lang, Texts> = {
     notHeard: "I couldn't make out that voice note. Could you say it again, or write it?",
     privacy:
       "Your messages travel encrypted. To help you, Escala and the Meta service that manages this chat process them. " +
-      "What I remember about you is stored encrypted, isn't used to train models or for ads, and no one on our team reads it. " +
+      "During Meta's hackathon, Escala runs on free credits from Meta, and while it does, Meta may use what is sent to its AI models to improve its products: please use made-up details only. " +
+      "What I remember about you is stored encrypted, is never used for ads, and no one on our team reads it. " +
       "Ask me what I know about you, or tell me to forget something or everything.",
     menuText: "What do you need?",
     menuButton: "Open menu",
@@ -115,7 +116,7 @@ export const T: Record<Lang, Texts> = {
   es: {
     hello:
       "¡Hola! Soy Escala, tu compañero de viaje. Soy una inteligencia artificial y estoy aquí solo para tu viaje: vuelos, conexiones, maletas, planes, lo que se te ofrezca en el camino.\n\n" +
-      "Lo que me cuentes se guarda cifrado, no se usa para entrenar modelos ni para publicidad, y puedes verlo o borrarlo cuando quieras. Solo pídemelo.",
+      "Es una versión de prueba del hackathon de Meta: usa datos inventados. Lo que me cuentes se guarda cifrado y puedes verlo o borrarlo cuando quieras.",
     welcomeBack: "¡Hola de nuevo! ¿En qué te ayudo con tu viaje? Recuerda que puedes preguntarme qué guardo de ti o pedirme que lo borre cuando quieras.",
     shareQuestion: "Antes de empezar, una pregunta: ¿me acuerdo solo de este viaje, o también aprendo cómo te gusta viajar para ayudarte mejor la próxima vez?",
     sharedTrip: "Va, solo este viaje. Lo borro cuando terminen el viaje y los plazos para reclamar.",
@@ -129,7 +130,8 @@ export const T: Record<Lang, Texts> = {
     notHeard: "No alcancé a entender la nota de voz. ¿Me la repites o me la escribes?",
     privacy:
       "Tus mensajes viajan cifrados. Para ayudarte, Escala y el servicio de Meta que gestiona este chat los procesan. " +
-      "Lo que recuerdo de ti se guarda cifrado, no se usa para entrenar modelos ni para publicidad, y nadie del equipo lo lee. " +
+      "Durante el hackathon de Meta, Escala funciona con créditos gratuitos de Meta y, mientras sea así, Meta puede usar lo que se envía a sus modelos de IA para mejorar sus productos: usa solo datos inventados. " +
+      "Lo que recuerdo de ti se guarda cifrado, no se usa para publicidad y nadie del equipo lo lee. " +
       "Pregúntame qué sé de ti, o pídeme que olvide algo o todo.",
     menuText: "¿Qué necesitas?",
     menuButton: "Ver menú",
@@ -167,7 +169,7 @@ export const T: Record<Lang, Texts> = {
   fr: {
     hello:
       "Bonjour ! Je suis Escala, votre compagnon de voyage. Je suis une intelligence artificielle, là seulement pour votre voyage : vols, correspondances, bagages, projets, tout ce qui arrive en route.\n\n" +
-      "Ce que vous me confiez est stocké chiffré, ne sert ni à entraîner des modèles ni à la publicité, et vous pouvez le consulter ou l'effacer à tout moment. Il suffit de me le demander.",
+      "Version de test pour le hackathon de Meta : utilisez des données inventées. Ce que vous me confiez est stocké chiffré, et vous pouvez le consulter ou l'effacer à tout moment.",
     welcomeBack: "Re-bonjour ! Comment puis-je vous aider pour votre voyage ? Vous pouvez toujours me demander ce que je garde sur vous, ou de l'effacer.",
     shareQuestion: "Une question avant de commencer : je retiens seulement ce voyage, ou j'apprends aussi votre façon de voyager pour mieux vous aider la prochaine fois ?",
     sharedTrip: "Entendu, seulement ce voyage. Je l'efface quand le voyage et les délais de réclamation sont terminés.",
@@ -181,7 +183,8 @@ export const T: Record<Lang, Texts> = {
     notHeard: "Je n'ai pas bien compris le message vocal. Pouvez-vous le répéter ou l'écrire ?",
     privacy:
       "Vos messages voyagent chiffrés. Pour vous aider, Escala et le service de Meta qui gère cette conversation les traitent. " +
-      "Ce dont je me souviens sur vous est stocké chiffré, ne sert ni à entraîner des modèles ni à la publicité, et personne dans notre équipe ne le lit. " +
+      "Pendant le hackathon de Meta, Escala fonctionne avec des crédits gratuits de Meta et, tant que c'est le cas, Meta peut utiliser ce qui est envoyé à ses modèles d'IA pour améliorer ses produits : utilisez uniquement des données inventées. " +
+      "Ce dont je me souviens sur vous est stocké chiffré, ne sert pas à la publicité, et personne dans notre équipe ne le lit. " +
       "Demandez-moi ce que je sais de vous, ou d'oublier une chose ou tout.",
     menuText: "De quoi avez-vous besoin ?",
     menuButton: "Ouvrir le menu",

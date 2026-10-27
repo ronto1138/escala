@@ -1,5 +1,5 @@
 /** The privacy policy, served at /privacy. Every statement here must match what the code does (see the tests). */
-export const PRIVACY_UPDATED = "2026-10-26";
+export const PRIVACY_UPDATED = "2026-10-27";
 
 export const PRIVACY_HTML = `<!doctype html>
 <html lang="en">
@@ -20,6 +20,12 @@ export const PRIVACY_HTML = `<!doctype html>
 <p>Escala is an AI travel companion on WhatsApp. It helps with one trip at a time: your itinerary, flight changes,
 your rights as a passenger, and plans on the way. It is in an early test phase.</p>
 
+<p><strong>During Meta's hackathon (until November 2026), this is a test version. Use made-up details only: do not
+send real personal information, documents or photos of people.</strong> In this period Escala runs on free credits
+from Meta, and while free credits are used, Meta may use the content sent to its AI models to improve its products.
+Before Escala serves real users, the free credits will be turned off (or another account will be used) and this
+policy will be updated.</p>
+
 <h2>What Escala processes</h2>
 <ul>
   <li>Your WhatsApp number and the messages you send Escala: text, and the photos, documents or voice notes you choose to share.</li>
@@ -34,7 +40,8 @@ your rights as a passenger, and plans on the way. It is in an early test phase.<
   but they are not end-to-end encrypted between you and Escala: Meta's service processes them to deliver them, under
   <a href="https://www.whatsapp.com/legal/business-terms">WhatsApp's business terms</a>.</li>
   <li><strong>Meta's AI models</strong> (Muse Spark through the Meta Model API) read your messages to answer them. Escala uses
-  them in Standard mode with request storage turned off, and never in the contributor mode, the one in which Meta trains on the data.</li>
+  them in Standard mode with request storage turned off. During the hackathon, while Meta's free credits are used, Meta may use that content to
+  improve its products (see the notice above).</li>
   <li><strong>Railway</strong> hosts the Escala server.</li>
 </ul>
 <p>Escala does not sell your data, does not use it for advertising, and nobody on our team reads your conversations.</p>
