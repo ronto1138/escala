@@ -17,6 +17,17 @@ export interface CloudApiOptions {
   now?: () => number;
 }
 
+/**
+ * WhatsApp identifies Mexican mobiles as 521 + 10 digits (and Argentine ones as 549 + …) when they write, but sending
+ * to that form fails (131030, "not in allowed list") because numbers are registered without the extra digit.
+ * Replies go to the registered form.
+ */
+export function sendableNumber(waId: string): string {
+  if (/^521\d{10}$/.test(waId)) return `52${waId.slice(3)}`;
+  if (/^549\d{10}$/.test(waId)) return `54${waId.slice(3)}`;
+  return waId;
+}
+
 /** A Cloud API error, without the token or the message content. */
 export class CloudApiError extends Error {
   readonly status: number;
@@ -64,7 +75,7 @@ export class CloudApiChannel implements ChannelPort {
     if (m.kind !== "template" && !this.windowOpen(to)) {
       throw new Error("outside the 24-hour window: only an approved template can be sent");
     }
-    const body = toCloudApi(to, m); // validates WhatsApp's limits first
+    const body = toCloudApi(sendableNumber(to), m); // validates WhatsApp's limits first
     const r = await this.graph(`${this.opts.phoneNumberId}/messages`, { method: "POST", body: JSON.stringify(body) });
     const id = (r as { messages?: Array<{ id?: string }> }).messages?.[0]?.id;
     if (!id) throw new CloudApiError(200, undefined, "no message id in the response");

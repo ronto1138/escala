@@ -188,3 +188,13 @@ describe("spending limits (audit Oct 26)", () => {
     expect(b.allow("c", "text")).toBe(true); // a new day
   });
 });
+
+describe("replies to Mexican and Argentine mobiles (131030 on Oct 27)", () => {
+  it("drop the extra mobile digit WhatsApp adds to the incoming id", async () => {
+    const { sendableNumber } = await import("../src/index.ts");
+    expect(sendableNumber("5215512345678")).toBe("525512345678");
+    expect(sendableNumber("5491112345678")).toBe("541112345678");
+    expect(sendableNumber("15550001111")).toBe("15550001111");
+    expect(sendableNumber("525512345678")).toBe("525512345678");
+  });
+});
