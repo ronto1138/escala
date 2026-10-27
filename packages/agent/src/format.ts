@@ -20,7 +20,8 @@ export function timeLabel(hhmm: string, lang: Lang): string {
 export function legLine(l: Leg, lang: Lang): string {
   const city = (iata: string) => AIRPORTS[iata]?.city ?? iata;
   const flight = l.flight.replace(/^([A-Z0-9]{2})(\d)/, "$1 $2");
-  return `${flight} · ${dayLabel(l.date, lang)} · ${city(l.from)} ${timeLabel(l.dep_local, lang)} → ${city(l.to)} ${timeLabel(l.arr_local, lang)}`;
+  const at = (hhmm: string) => (hhmm ? ` ${timeLabel(hhmm, lang)}` : ""); // a time the itinerary did not give is left out
+  return `${flight} · ${dayLabel(l.date, lang)} · ${city(l.from)}${at(l.dep_local)} → ${city(l.to)}${at(l.arr_local)}`;
 }
 
 /**
@@ -29,8 +30,9 @@ export function legLine(l: Leg, lang: Lang): string {
  */
 export function forWhatsApp(text: string): string {
   return text
-    .replace(/\[([^\]\n]{1,80})\]\((https?:\/\/[^)\s]+)\)/g, "$1: $2")
+    .replace(/\[([^\]\n]{1,300})\]\((https?:\/\/[^)\s]+)\)/g, (_, label: string, url: string) => (label.trim() === url || /^https?:/.test(label.trim()) ? url : `${label}: ${url}`))
     .replace(/\*\*([^*\n]+)\*\*/g, "*$1*")
-    .replace(/^#{1,6}\s+/gm, "");
+    .replace(/^#{1,6}\s+/gm, "")
+    .trim();
 }
 

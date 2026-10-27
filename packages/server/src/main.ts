@@ -5,10 +5,10 @@ import { mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AIRPORTS, createEscalaAgent, createRates, longestDeadlineDays, readIntent, routeMessage, type TraceStep } from "@escala/agent";
+import { AIRPORTS, createEscalaAgent, createRates, legLine, longestDeadlineDays, readIntent, routeMessage, type TraceStep } from "@escala/agent";
 import type { InboundMessage } from "@escala/channel";
 import { Conversation, keywordIntent, type Person } from "@escala/conversation";
-import { loadScenario, ReplayClock } from "@escala/feeds";
+import { loadScenario, ReplayClock, scenarioLegs } from "@escala/feeds";
 import { ConversationStore, MemoryCrypto, MemoryStore } from "@escala/memory";
 import { createMetaClient, createOpenModelClient, fileSink, responsesViaOpen, type UsageLine } from "@escala/meta-client";
 import { loadEntries } from "@escala/rights";
@@ -72,7 +72,11 @@ const claimDays = longestDeadlineDays(loadEntries());
 const scenario = fileURLToPath(new URL("../../feeds/scenarios/demo-inbound-late.yaml", import.meta.url));
 // Flights are simulated (no flight data provider yet): the demo scenario plays in real time, faster than life, from
 // the moment someone confirms a trip with its flights, so changes and their alerts arrive on their own.
-const feed = new ReplayClock(loadScenario(scenario), { secondsPerMinute: Number(env.REPLAY_SECONDS_PER_MINUTE ?? 3) });
+const demoScenario = loadScenario(scenario);
+const feed = new ReplayClock(demoScenario, { secondsPerMinute: Number(env.REPLAY_SECONDS_PER_MINUTE ?? 3) });
+// The demo trip (D48): the scenario's two connecting flights, dated so the story starts when the person asks for it.
+const DEMO_FLIGHTS = ["ZZ1234", "ZZ567"];
+const demoStartedAt = new Map<string, number>();
 
 // What the agent decided, for the operations report: counts and kinds only, never content.
 const escala = createEscalaAgent({
@@ -113,13 +117,24 @@ const conversation = new Conversation({
     }
   },
   onShareChanged: async (p) => void memory.updateSettings(p.id, { share: p.share }),
+  demoTrip: (p) => {
+    const startAt = Math.ceil(Date.now() / 300_000) * 300_000; // on the next five minutes: times read like a real schedule
+    demoStartedAt.set(p.id, startAt);
+    if (demoStartedAt.size > 1000) demoStartedAt.delete(demoStartedAt.keys().next().value!);
+    const legs = scenarioLegs(demoScenario, DEMO_FLIGHTS, startAt);
+    return { lines: legs.map((l) => legLine(l, p.lang)), trip: { bookingRef: null, legs } };
+  },
+  // Flights in the simulated data play out in real time from now; any other flight cannot be followed during the test.
   onTripConfirmed: async (p) => {
     const legs = (p.trip as { legs?: Array<{ flight: string }> } | undefined)?.legs ?? [];
     const played = feed.idents();
-    if (legs.some((l) => played.includes(l.flight.replace(/\s+/g, "").toUpperCase()))) {
-      feed.restart();
+    const watching = legs.some((l) => played.includes(l.flight.replace(/\s+/g, "").toUpperCase()));
+    if (watching) {
+      feed.restart(demoStartedAt.get(p.id));
+      demoStartedAt.delete(p.id);
       log({ event: "demo_replay", from: tag(p.id) });
     }
+    return { watching };
   },
   onDelete: async (id) => {
     testers.forget(id);

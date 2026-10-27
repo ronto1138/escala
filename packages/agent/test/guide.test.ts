@@ -74,3 +74,10 @@ describe("WhatsApp formatting", () => {
     expect(forWhatsApp("## Para cenar\nok")).toBe("Para cenar\nok");
   });
 });
+
+describe("a link written as its own label", () => {
+  it("is shown once", async () => {
+    const { forWhatsApp } = await import("../src/format.ts");
+    expect(forWhatsApp("[https://g.co/x](https://g.co/x)")).toBe("https://g.co/x");
+  });
+});

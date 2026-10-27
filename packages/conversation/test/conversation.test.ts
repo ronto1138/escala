@@ -355,3 +355,49 @@ describe("shared location", () => {
     expect(conv.people.get("15550001234")?.location).toBeUndefined();
   });
 });
+
+describe("demo trip", () => {
+  function demoSetup(watching: boolean) {
+    const sim = new SimChannel(() => Date.parse("2026-11-06T16:00:00Z"));
+    const conv = new Conversation({
+      channel: sim,
+      extractItinerary: async (m) => (m.kind === "text" && /\bAA\s?\d+/.test(m.text) ? trip : null),
+      demoTrip: () => ({ lines: ["ZZ 1234 · demo"], trip: { legs: 2 } }),
+      onTripConfirmed: async () => ({ watching }),
+    });
+    const out = () => sim.transcript.filter((e) => e.direction === "out").map((e) => e.message as OutboundMessage);
+    return { sim, conv, out };
+  }
+
+  it("is offered with a button next to the itinerary request, and a tap shows it to confirm", async () => {
+    const { sim, out } = demoSetup(true);
+    await sim.userSends("15550004444", { kind: "text", text: "hi" });
+    await sim.userSends("15550004444", { kind: "text", text: "just this trip" });
+    const ask = out().at(-1)!;
+    expect(ask.kind).toBe("buttons");
+    expect(ask.kind === "buttons" && ask.buttons[0]!.id).toBe("demo_trip");
+    await sim.userSends("15550004444", { kind: "interactive", replyId: "demo_trip", title: "Try a demo trip" });
+    expect(out().at(-1)).toMatchObject({ kind: "text", text: expect.stringContaining("ZZ 1234 · demo") });
+    await sim.userSends("15550004444", { kind: "text", text: "yes" });
+    expect(out().at(-1)).toMatchObject({ text: T.en.confirmed });
+  });
+
+  it("says plainly that real flights cannot be followed in the test, and offers the demo", async () => {
+    const { sim, out } = demoSetup(false);
+    await sim.userSends("15550005555", { kind: "text", text: "hi" });
+    await sim.userSends("15550005555", { kind: "text", text: "just this trip" });
+    await sim.userSends("15550005555", { kind: "text", text: "AA 100 JFK to LAX tomorrow" });
+    await sim.userSends("15550005555", { kind: "text", text: "yes" });
+    expect(out().at(-1)).toMatchObject({ kind: "buttons", text: T.en.notWatching });
+  });
+});
+
+describe("someone who switches language", () => {
+  it("is followed when the message is clearly in another language, never on a short yes", async () => {
+    const { clearLang } = await import("../src/index.ts");
+    expect(clearLang("hey, my flight out of Austin is showing late. Am I still going to make it?")).toBe("en");
+    expect(clearLang("Qu'est-ce que je peux réclamer si j'arrive à Montréal avec trois heures de retard ?")).toBe("fr");
+    expect(clearLang("yes")).toBeNull();
+    expect(clearLang("ok gracias")).toBeNull();
+  });
+});

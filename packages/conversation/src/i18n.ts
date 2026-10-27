@@ -25,18 +25,40 @@ export const DELETE_ALL_PHRASES = [
 ];
 
 /** First-message language guess. The person can always switch; this only picks the greeting. */
+const EN_WORDS = ["hi", "hello", "the", "my", "flight", "what", "is", "are", "i", "i'm", "you", "and", "thanks", "yes", "can", "do", "how", "of", "with", "will", "late"];
+const ES_WORDS = ["hola", "mi", "vuelo", "qué", "gracias", "viaje", "está", "sí", "el", "la", "los", "las", "por", "para", "que", "es", "y", "tengo", "puedes"];
+const FR_WORDS = ["bonjour", "mon", "vol", "merci", "est-ce", "voyage", "je", "à", "oui", "le", "les", "c'est", "vous", "pour", "et", "est", "j'ai", "pouvez-vous"];
+
 export function detectLang(text: string): Lang {
   const lower = text.toLowerCase();
   const tokens = new Set(lower.split(/[^\p{L}'-]+/u).filter(Boolean));
   const score = (words: string[], chars: string[]) =>
     words.reduce((n, w) => n + (tokens.has(w) ? 1 : 0), 0) + chars.reduce((n, c) => n + (lower.includes(c) ? 1 : 0), 0);
   // Only words that belong to one language; "me", "a", "no" and the like are shared and decide nothing.
-  const en = score(["hi", "hello", "the", "my", "flight", "what", "is", "are", "i", "i'm", "you", "and", "thanks", "yes", "can", "do", "how", "of", "with", "will", "late"], []);
-  const es = score(["hola", "mi", "vuelo", "qué", "gracias", "viaje", "está", "sí", "el", "la", "los", "las", "por", "para", "que", "es", "y", "tengo", "puedes"], ["¿", "ñ"]);
-  const fr = score(["bonjour", "mon", "vol", "merci", "est-ce", "voyage", "je", "à", "oui", "le", "les", "c'est", "vous", "pour", "et", "est", "j'ai", "pouvez-vous"], ["ç"]);
+  const en = score(EN_WORDS, []);
+  const es = score(ES_WORDS, ["¿", "ñ"]);
+  const fr = score(FR_WORDS, ["ç"]);
   if (es > fr && es > en) return "es";
   if (fr > es && fr > en) return "fr";
   return "en";
+}
+
+/**
+ * The language of a message only when it is clear (at least three of its words, two more than any other language):
+ * enough to follow someone who switches language, never on a short "yes" or "ok".
+ */
+export function clearLang(text: string): Lang | null {
+  const lower = text.toLowerCase();
+  const tokens = new Set(lower.split(/[^\p{L}'-]+/u).filter(Boolean));
+  const score = (words: string[], chars: string[]) =>
+    words.reduce((n, w) => n + (tokens.has(w) ? 1 : 0), 0) + chars.reduce((n, c) => n + (lower.includes(c) ? 1 : 0), 0);
+  const all: Record<Lang, number> = {
+    en: score([...EN_WORDS, "we", "our", "about", "there", "going", "it", "to", "tell", "that", "this", "out", "still", "where", "when", "quick", "question", "bag", "please"], []),
+    es: score([...ES_WORDS, "ya", "dónde", "cómo", "nos", "estoy", "salió", "hago", "hoy", "tus", "dime", "cuéntame", "quiero", "cuánto", "cuándo", "maleta", "aeropuerto", "olvida", "mis", "del"], ["¿", "ñ"]),
+    fr: score([...FR_WORDS, "ce", "qu'est-ce", "nous", "mes", "du", "avec", "retour", "toujours", "où", "quand", "bagage", "aéroport", "dites", "s'il"], ["ç"]),
+  };
+  const ranked = (Object.entries(all) as Array<[Lang, number]>).sort((a, b) => b[1] - a[1]);
+  return ranked[0]![1] >= 3 && ranked[0]![1] - ranked[1]![1] >= 2 ? ranked[0]![0] : null;
 }
 
 type Texts = {
@@ -51,6 +73,10 @@ type Texts = {
   askItinerary: string;
   itinerarySummary: (lines: string[]) => string;
   confirmed: string;
+  /** Button under the itinerary request: a demo trip whose simulated flights play out in minutes. Max 20 characters. */
+  demoButton: string;
+  /** After confirming a trip whose flights Escala cannot follow (flight data is simulated during the test). */
+  notWatching: string;
   fixPrompt: string;
   notReadable: string;
   /** What Escala understood from a voice note, so a misheard word can be corrected at once. */
@@ -79,6 +105,8 @@ export const T: Record<Lang, Texts> = {
     askItinerary: "Send me your trip however you have it: the confirmation email, a screenshot, a PDF, or just the flight numbers.",
     itinerarySummary: (lines) => `This is what I have:\n\n${lines.join("\n")}\n\nDid I get it right?`,
     confirmed: "Perfect. I'm keeping an eye on your flights and I'll tell you the moment something changes. Ask me anything about your trip.",
+    demoButton: "Try a demo trip",
+    notWatching: "Saved. One thing: in this test, flight data is simulated, so I can't follow real flights. I can still help with anything about your trip. To see live flight alerts, try the demo trip.",
     fixPrompt: "No problem. What should I fix?",
     notReadable: "I couldn't find a trip there. Could you send me the confirmation email, a screenshot, or the flight numbers and dates?",
     heard: (t) => `🎙️ I heard: "${t}"`,
@@ -132,6 +160,8 @@ export const T: Record<Lang, Texts> = {
     askItinerary: "Mándame tu viaje como lo tengas: el correo de confirmación, una captura, un PDF o solo los números de vuelo.",
     itinerarySummary: (lines) => `Esto es lo que tengo:\n\n${lines.join("\n")}\n\n¿Está bien?`,
     confirmed: "Perfecto. Ya estoy al pendiente de tus vuelos y te aviso en cuanto algo cambie. Pregúntame lo que quieras de tu viaje.",
+    demoButton: "Probar viaje demo",
+    notWatching: "Listo, lo guardé. Un detalle: en esta prueba los datos de vuelo son simulados, así que no puedo seguir vuelos reales. Igual te ayudo con todo lo de tu viaje. Para ver avisos de vuelo en vivo, prueba el viaje demo.",
     fixPrompt: "Claro. ¿Qué corrijo?",
     notReadable: "No encontré un viaje ahí. ¿Me mandas el correo de confirmación, una captura o los números de vuelo y las fechas?",
     heard: (t) => `🎙️ Entendí: «${t}»`,
@@ -185,6 +215,8 @@ export const T: Record<Lang, Texts> = {
     askItinerary: "Envoyez-moi votre voyage comme vous l'avez : le courriel de confirmation, une capture, un PDF ou simplement les numéros de vol.",
     itinerarySummary: (lines) => `Voici ce que j'ai :\n\n${lines.join("\n")}\n\nC'est bien ça ?`,
     confirmed: "Parfait. Je surveille vos vols et je vous préviens dès que quelque chose change. Demandez-moi ce que vous voulez sur votre voyage.",
+    demoButton: "Voyage de démo",
+    notWatching: "C'est noté. Une précision : dans ce test, les données de vol sont simulées, je ne peux donc pas suivre de vrais vols. Je peux quand même vous aider pour tout votre voyage. Pour voir des alertes de vol en direct, essayez le voyage de démo.",
     fixPrompt: "Bien sûr. Qu'est-ce que je corrige ?",
     notReadable: "Je n'ai pas trouvé de voyage. Pouvez-vous m'envoyer le courriel de confirmation, une capture ou les numéros de vol et les dates ?",
     heard: (t) => `🎙️ J'ai compris : « ${t} »`,
@@ -228,3 +260,8 @@ export const T: Record<Lang, Texts> = {
     stopped: "C'est fait. Je ne vous enverrai plus de messages. Votre dossier reste jusqu'à la fin des délais de réclamation, au cas où ; écrivez EFFACER et je l'efface maintenant.",
   },
 };
+
+/** The whole message asks for the demo trip (also the id of its button). */
+export const DEMO_TRIP_ID = "demo_trip";
+export const DEMO_WORDS = ["demo", "demo trip", "try a demo trip", "viaje demo", "probar viaje demo", "viaje de prueba", "viaje de demostración", "voyage de démo", "démo", "voyage démo"];
+

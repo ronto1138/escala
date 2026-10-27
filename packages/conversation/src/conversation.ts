@@ -1,5 +1,5 @@
 import type { ChannelPort, InboundMessage, OutboundMessage, ParticipantId } from "@escala/channel";
-import { DELETE_ALL_PHRASES, DELETE_WORDS, detectLang, EXACT_NO, EXACT_YES, MENU_WORDS, PRIVACY_WORDS, STOP_WORDS, T, type Lang } from "./i18n.ts";
+import { clearLang, DELETE_ALL_PHRASES, DELETE_WORDS, DEMO_TRIP_ID, DEMO_WORDS, detectLang, EXACT_NO, EXACT_YES, MENU_WORDS, PRIVACY_WORDS, STOP_WORDS, T, type Lang } from "./i18n.ts";
 
 export type Stage = "new" | "onboarding" | "ready" | "stopped";
 export type ShareLevel = "trip" | "profile";
@@ -86,7 +86,10 @@ export interface ConversationDeps {
   store?: PersonStore;
   /** Everything else: the trip agent. Optional while it is being built. */
   agent?(m: InboundMessage, person: Person): Promise<OutboundMessage[]>;
-  onTripConfirmed?(person: Person): Promise<void>;
+  /** After a trip is confirmed. `watching: false` means its flights cannot be followed (not in the simulated data). */
+  onTripConfirmed?(person: Person): Promise<void | { watching: boolean }>;
+  /** A ready-made trip whose simulated flights play out in minutes, offered with a button next to the itinerary request. */
+  demoTrip?(person: Person): ExtractedTrip | null;
   /** Erase everything kept about this person (memory, trips, case files). */
   onDelete?(id: ParticipantId): Promise<void>;
   /** Voice note to text (Muse Voice Transcribe). Null when nothing could be understood. Without it, voice goes to the agent. */
@@ -127,6 +130,7 @@ export class Conversation {
 
   async handle(incoming: InboundMessage): Promise<void> {
     let m = incoming;
+    const demoTap = m.kind === "interactive" && m.replyId === DEMO_TRIP_ID;
     // A tap on a template button or a menu row is what the person chose to say: it is handled as their words.
     if (m.kind === "template_button" || m.kind === "interactive") {
       const said = (m.kind === "template_button" ? m.text || m.payload : m.title || m.replyId).trim();
@@ -137,7 +141,7 @@ export class Conversation {
     if (m.kind === "audio" && this.deps.transcribe) {
       const known = this.people.get(m.from);
       const said = (await this.deps.transcribe(m, known))?.trim();
-      const lang = known?.langFromText ? known.lang : said ? detectLang(said) : (known?.lang ?? "en");
+      const lang = (said && clearLang(said)) || (known?.langFromText ? known.lang : said ? detectLang(said) : (known?.lang ?? "en"));
       if (!said) return void (await this.deps.channel.send(m.from, { kind: "text", text: T[lang].notHeard }));
       await this.deps.channel.send(m.from, { kind: "text", text: T[lang].heard(said.length > 300 ? `${said.slice(0, 300)}…` : said) });
       m = { id: m.id, from: m.from, at: m.at, kind: "text", text: said };
@@ -153,7 +157,7 @@ export class Conversation {
     }
     const before = p?.recent?.length ?? 0; // the replies to this message are added after this point
     try {
-      await this.process(m, text, word, at, p);
+      await this.process(m, text, word, at, p, demoTap);
     } finally {
       const after = this.people.get(m.from);
       if (after) {
@@ -166,7 +170,7 @@ export class Conversation {
     }
   }
 
-  private async process(m: InboundMessage, text: string, word: string, at: number, p: Person | undefined): Promise<void> {
+  private async process(m: InboundMessage, text: string, word: string, at: number, p: Person | undefined, demoTap = false): Promise<void> {
     const tokens = new Set(word.split(/[^\p{L}'-]+/u).filter(Boolean));
 
     const deleteAll =
@@ -195,6 +199,9 @@ export class Conversation {
       return this.say(p, T[p.lang].shareQuestion);
     }
 
+    // Someone who switches language is answered in the new one, once the message makes it clear.
+    const switched = text ? clearLang(text) : null;
+    if (switched && p.langFromText && switched !== p.lang) p.lang = switched;
     if (!p.langFromText && text) {
       p.lang = detectLang(text);
       p.langFromText = true;
@@ -207,6 +214,16 @@ export class Conversation {
 
     if (MENU_WORDS.includes(word)) return this.mainMenu(p);
     if (PRIVACY_WORDS.includes(word)) return this.say(p, T[p.lang].privacy);
+
+    // The demo trip, by its button or by asking for it in so many words: shown like any itinerary, to confirm.
+    if (this.deps.demoTrip && (demoTap || DEMO_WORDS.includes(word))) {
+      const demo = this.deps.demoTrip(p);
+      if (demo) {
+        p.pending = demo;
+        p.awaiting = "confirm";
+        return this.say(p, T[p.lang].itinerarySummary(demo.lines));
+      }
+    }
 
     // Exact shortcut (D42): a whole-message "sí" / "no" that answers the itinerary Escala just showed needs no model.
     if (this.deps.route && m.kind === "text" && p.awaiting === "confirm" && p.pending) {
@@ -235,7 +252,7 @@ export class Conversation {
         p.awaiting = null;
         await this.deps.onShareChanged?.(p);
         await this.say(p, p.share === "profile" ? T[p.lang].sharedProfile : T[p.lang].sharedTrip);
-        if (!p.trip && !p.pending) return this.say(p, T[p.lang].askItinerary);
+        if (!p.trip && !p.pending) return this.askForTrip(p);
         return;
       }
     }
@@ -290,7 +307,7 @@ export class Conversation {
         if (p.awaiting === "share") p.awaiting = null;
         await this.deps.onShareChanged?.(p);
         await this.say(p, p.share === "profile" ? T[p.lang].sharedProfile : T[p.lang].sharedTrip);
-        if (!p.trip && !p.pending) await this.say(p, T[p.lang].askItinerary);
+        if (!p.trip && !p.pending) await this.askForTrip(p);
         return true;
       case "confirm":
         if (!p.pending) return false;
@@ -355,7 +372,14 @@ export class Conversation {
   }
 
   private async readItinerary(m: InboundMessage, p: Person, correction?: string): Promise<boolean> {
-    const got = await this.deps.extractItinerary(m, p, correction);
+    let got: ExtractedTrip | null;
+    try {
+      got = await this.deps.extractItinerary(m, p, correction);
+    } catch {
+      // A model that fails here must not leave the person without an answer.
+      await this.say(p, T[p.lang].notReadable);
+      return true;
+    }
     if (!got || got.lines.length === 0) return false;
     p.pending = got;
     p.awaiting = "confirm";
@@ -364,13 +388,14 @@ export class Conversation {
   }
 
   private async confirm(p: Person) {
-    if (!p.pending) return this.say(p, T[p.lang].askItinerary);
+    if (!p.pending) return this.askForTrip(p);
     p.trip = p.pending.trip;
     delete p.pending;
     p.stage = "ready";
     p.awaiting = null;
-    await this.say(p, T[p.lang].confirmed);
-    await this.deps.onTripConfirmed?.(p);
+    const after = await this.deps.onTripConfirmed?.(p);
+    if (after && after.watching === false) await this.offerDemo(p, T[p.lang].notWatching);
+    else await this.say(p, T[p.lang].confirmed);
     if (!p.shareAsked) {
       p.shareAsked = true;
       p.awaiting = "share";
@@ -396,6 +421,17 @@ export class Conversation {
     const person: Person = { id, lang, stage: "new", share: "trip", shareAsked: false, langFromText: false, awaiting: null }; // most private by default
     this.people.set(id, person);
     return person;
+  }
+
+  /** Asks for the itinerary; with a demo trip available, a button offers it. */
+  private async askForTrip(p: Person) {
+    return this.offerDemo(p, T[p.lang].askItinerary);
+  }
+
+  private async offerDemo(p: Person, text: string) {
+    if (!this.deps.demoTrip) return this.say(p, text);
+    await this.deps.channel.send(p.id, { kind: "buttons", text, buttons: [{ id: DEMO_TRIP_ID, title: T[p.lang].demoButton }] });
+    this.remember(p, "escala", text, new Date().toISOString());
   }
 
   private async say(p: Person, text: string): Promise<void> {

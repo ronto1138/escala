@@ -50,6 +50,9 @@ const OPEN_TEXT: Record<Lang, (flight: string, change: string) => string> = {
   fr: (f, c) => `✈️ Du nouveau : le vol ${f} ${c}. Répondez-moi et je vous dirai ce que cela change pour votre correspondance et vos droits.`,
 };
 
+/** Flights from the replayed scenario are said to be simulated, every time. */
+const SIMULATED: Record<Lang, string> = { en: "(simulated flight data)", es: "(datos de vuelo simulados)", fr: "(données de vol simulées)" };
+
 const norm = (s: string) => s.replace(/\s+/g, "").toUpperCase();
 const pretty = (ident: string) => ident.replace(/^([A-Z0-9]{2})(\d+)$/, "$1 $2");
 
@@ -73,7 +76,7 @@ export function createNotifier(deps: NotifierDeps) {
         const flight = pretty(ident);
         const open = deps.windowOpen(p.id);
         const m: OutboundMessage = open
-          ? { kind: "text", text: OPEN_TEXT[p.lang](flight, change) }
+          ? { kind: "text", text: `${OPEN_TEXT[p.lang](flight, change)}${snap.source === "replay" ? ` ${SIMULATED[p.lang]}` : ""}` }
           : { kind: "template", name: TEMPLATE, language: TEMPLATE_LANG[p.lang], bodyParams: [flight, change] };
         try {
           await deps.send(p.id, m);

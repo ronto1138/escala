@@ -373,7 +373,8 @@ export function createEscalaAgent(
     // A guard that fails (truncated JSON, timeout) is tried once more; if it fails again nothing is answered.
     let guarded: Awaited<ReturnType<typeof scopeGuard>>;
     try {
-      guarded = await scopeGuard(deps.client, m.text, trip, p.lang).catch(() => scopeGuard(deps.client, m.text, trip, p.lang));
+      const lastSaid = [...(p.recent ?? [])].reverse().find((t) => t.role === "escala")?.text;
+      guarded = await scopeGuard(deps.client, m.text, trip, p.lang, lastSaid).catch(() => scopeGuard(deps.client, m.text, trip, p.lang, lastSaid));
     } catch (e) {
       trace({ kind: "fallback", reason: `scope guard failed: ${String(e).slice(0, 120)}` });
       return [{ kind: "text", text: SAY_AGAIN[p.lang] }];
@@ -436,6 +437,7 @@ export function createEscalaAgent(
       "If rights_for_trip returns nothing for this country or this kind of problem, say your rules don't cover it yet; never conclude that no rights exist or that the airline owes nothing. " +
       "Ask at most one question, and only the one rights_for_trip returned or one needed to answer; don't end with offers phrased as questions. " +
       "You give information with sources, not legal advice; never promise compensation. Never book anything. " +
+      "You cannot message other people yet: if asked to tell someone something, say so kindly and give a short ready-to-forward message in the traveler's language with only what they told you or the trip shows. " +
       "For getting around, places, food, stays, events, tours, airport layout or safety, call search_travel_info and offer what it found as a suggestion, " +
       "naming the source and the day it was checked, with at most two of its links at the end. Next to each place or route, put its maps_link so they can follow it with their GPS. If it says 'unconfirmed', or sources disagree, say plainly that you could not confirm it. " +
       "Never present something from the web as certain. Use convert for currencies and measures; currency results are reference rates of the date it gives, not what a bank charges. " +
@@ -557,7 +559,10 @@ export function createEscalaAgent(
     }
     if (name === "get_flight_status") {
       const snap = deps.feed.findByIdent(args.flight);
-      if (!snap) return { error: "no data for this flight" };
+      if (!snap) {
+        // During the test only the simulated demo flights have data: the flight number is not the problem.
+        return { error: "no flight data: during this test flight data is simulated and only the demo trip's flights (ZZ1234, ZZ567) have it. Say so plainly; never suggest the flight number is wrong. The traveler can still ask anything else about the trip, or try the demo trip by saying 'demo'." };
+      }
       const inbound = snap.inboundFlightId ? deps.feed.getFlight(snap.inboundFlightId) : undefined;
       const lateMin = arrivalMinutesLate(snap);
       const inboundMin = inboundDelayMinutes(snap, inbound);
