@@ -10,11 +10,21 @@ Built for the **Meta Global AI Developer Hackathon** (Oct 26 – Nov 4, 2026), t
 with Meta's models through the Meta Model API. **Built with Muse Spark Open**: Meta's open-weight model, served by
 Baseten, is the memory that learns how each traveler likes to travel. Escala is for adults (18+).
 
-> Status: **Day 2 (Oct 27).** Escala is live on WhatsApp (Meta's test number), running on Railway. It reads an
-> itinerary from a screenshot, watches flights (with the inbound-aircraft inference), decides passenger rights by
-> rules across the US, Canada, Mexico, the EU, the UK and the Montreal Convention, checks every figure before it is
-> sent, understands voice notes in three languages, and records the condition of a bag or a rental car from a photo.
-> Privacy policy: https://escala-production-e918.up.railway.app/privacy. The trust panel comes next.
+> Status: **Day 2 (Oct 27).** Escala is live on WhatsApp, running on Railway. It reads an itinerary from text or a
+> screenshot, watches flights (with the inbound-aircraft inference), decides passenger rights by rules across the US,
+> Canada, Mexico, the EU, the UK and the Montreal Convention, checks every figure before it is sent, understands voice
+> notes in three languages, records the condition of a bag or a rental car from a photo, and guides the trip:
+> getting from the airport, transit or taxi, places, events and safety, found with Muse Spark's web search and
+> always with the source and the date checked. What no source confirms, it says it could not confirm. It also
+> converts currencies (European Central Bank reference rates, dated) and measures.
+> Privacy policy: https://escala-production-e918.up.railway.app/privacy.
+
+**Simulated flights.** During the hackathon, flight data comes from synthetic scenarios replayed in real time (flight
+numbers ZZ1234 and ZZ567); no live flight data provider is connected.
+
+**Test phase.** Escala answers only invited numbers. The Kokorio team reads test conversations to improve Escala, and
+Meta may use them while the event's free credits are used. Use made-up details. Conversations are sealed with a
+public key before they reach the server log; the private key is not on the server.
 
 ## What's inside
 
@@ -25,10 +35,10 @@ Baseten, is the memory that learns how each traveler likes to travel. Escala is 
 | `feeds` | Flight data: a replay feed of synthetic scenarios in the AeroAPI v4 shape, and a change detector that infers delays from a late inbound aircraft, always flagged as an inference |
 | `channel` | WhatsApp Cloud API payloads checked against platform limits, webhook signature verification, and a simulator with the same rules, including the 24-hour window |
 | `conversation` | Conversation first: people say what they need in their own words; a short first-contact introduction; the menu only on request |
-| `agent` | Muse Spark with tools (flight status, rights for this trip, memory), a scope guard that keeps every answer on the trip, a deterministic verifier that blocks any amount, percentage or deadline the rules did not produce, and evidence photos read with Muse Spark and SAM 3.1 |
-| `meta-client` (open) | Muse Spark Open on Baseten for structured output, synchronous only (zero data retention), usage logged with provider and cost |
+| `agent` | Muse Spark with tools (flight status, rights for this trip, memory, trip guide with built-in web search, currency and unit conversion), a scope guard that keeps every answer on the trip, a deterministic verifier that blocks any amount, percentage or deadline that neither the rules nor a cited source produced, and evidence photos read with Muse Spark and SAM 3.1. Rights are never looked up on the web |
+| `meta-client` (open) | Muse Spark Open on Baseten for structured output, synchronous only (zero data retention), usage logged with provider and cost. It is also the last fallback when the Meta Model API does not answer (Muse Spark 1.3 → 1.2 → Muse Spark Open) |
 | `memory` | What Escala remembers, encrypted per person (AES-256-GCM), with the source of every fact, consent for anything beyond the trip, and retention enforced: trip facts expire with the trip and its claim deadlines |
-| `server` | The WhatsApp service: signed webhook, Cloud API channel, voice notes through Muse Voice Transcribe, spending limits, the privacy page, and the hourly retention sweep |
+| `server` | The WhatsApp service: signed webhook, Cloud API channel, voice notes through Muse Voice Transcribe, spending limits, the privacy page, the hourly retention sweep, and the test phase (invitation codes, sealed test conversations) |
 
 ## Run the tests
 
