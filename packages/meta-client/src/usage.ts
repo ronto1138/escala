@@ -11,6 +11,8 @@ export interface UsageLine {
   cached_tokens: number;
   output_tokens: number;
   images: number;
+  /** Built-in web searches the model ran (billed per search). */
+  web_searches?: number;
   latency_ms: number;
   cost_usd: number;
   ok: boolean;

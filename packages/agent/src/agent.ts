@@ -6,6 +6,7 @@ import { ConsentError, tripRetention, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
 import { legLine } from "./format.ts";
 import { evidenceReply, readEvidence, type EvidenceObject } from "./evidence.ts";
+import { convertUnits, RIGHTS_TOPIC, searchTravel, UNIT_NAMES, type createRates } from "./guide.ts";
 import { acceptCandidates, proposeFacts } from "./learner.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
 import { factsFor, journeys, norm, type Airlines, type Trip } from "./trip.ts";
@@ -28,6 +29,8 @@ export interface AgentDeps {
   learner?: OpenModelClient;
   /** Airline reference data (country, EU carrier, APPR size). Defaults to the fictitious airlines of the demo. */
   airlines?: Airlines;
+  /** Currency conversion with official reference rates. Optional: without it Escala does not convert currencies. */
+  convertCurrency?: ReturnType<typeof createRates>;
 }
 
 export type TraceStep =
@@ -180,6 +183,41 @@ const TOOLS = [
         single_booking: { type: ["boolean", "null"], description: "All flights were bought in one booking (false for self-transfer)" },
         fare: { type: ["number", "null"], description: "One-way fare paid, if the traveler stated it" },
         fare_currency: { type: ["string", "null"], description: "ISO currency of the fare, e.g. USD, MXN" },
+      },
+    },
+    strict: true,
+  },
+  {
+    type: "function",
+    name: "search_travel_info",
+    description:
+      "Look up on the web anything practical for this trip that is not a flight or a passenger right: getting from the airport, between terminals or around a city " +
+      "(transit, trains, buses, taxi or ride-hailing and when each makes sense), where to stay or eat, events, tours and visits, opening hours, and safety advisories. " +
+      "Returns findings with sources and the date checked; 'unconfirmed' means no source backed them.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["query", "place"],
+      properties: {
+        query: { type: "string", description: "what to find, specific: dates, times, airport terminals, budget, who travels" },
+        place: { type: ["string", "null"], description: "city or airport of the trip it is about" },
+      },
+    },
+    strict: true,
+  },
+  {
+    type: "function",
+    name: "convert",
+    description: `Convert a currency amount (official reference rate of the day) or a measure (${UNIT_NAMES.join(", ")}; c and f are degrees).`,
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "value", "from", "to"],
+      properties: {
+        kind: { type: "string", enum: ["currency", "units"] },
+        value: { type: "number" },
+        from: { type: "string", description: "ISO currency (USD, MXN, CAD, EUR…) or unit" },
+        to: { type: "string" },
       },
     },
     strict: true,
@@ -354,6 +392,7 @@ export function createEscalaAgent(
     for (const f of learned) numbersInText(f.source.quote ?? "").forEach((n) => allowed.durations.push(n));
     const instructions =
       `You are Escala, a warm, plain-spoken travel companion on WhatsApp, for this traveler's trip only. Reply in ${LANG_NAME[p.lang]}, briefly, like a person who knows travel. ` +
+      "Answer only the traveler's latest message: earlier turns are context and were already answered, never repeat them unless asked. " +
       "Use tools for facts; never guess flight status. Never state an amount, percentage, deadline or legal article unless rights_for_trip returned it under 'applies'. " +
       "If a right only 'may apply', say what it depends on and ask the single question returned, nothing else. If the inbound aircraft is late, say it is your inference, not airline data. " +
       "If an entry's status is not VERIFICADO, say it is not verified. A rule under 'not_in_force_yet' is a reform: say it does not apply yet and from when. " +
@@ -363,6 +402,9 @@ export function createEscalaAgent(
       "If rights_for_trip returns nothing for this country or this kind of problem, say your rules don't cover it yet; never conclude that no rights exist or that the airline owes nothing. " +
       "Ask at most one question, and only the one rights_for_trip returned or one needed to answer; don't end with offers phrased as questions. " +
       "You give information with sources, not legal advice; never promise compensation. Never book anything. " +
+      "For getting around, places, food, stays, events, tours, airport layout or safety, call search_travel_info and offer what it found as a suggestion, " +
+      "naming the source and the day it was checked, with at most two of its links at the end. If it says 'unconfirmed', or sources disagree, say plainly that you could not confirm it. " +
+      "Never present something from the web as certain. Use convert for currencies and measures; currency results are reference rates of the date it gives, not what a bank charges. " +
       `Trip: ${tripText}.` +
       (deps.memory
         ? ` When the traveler shares a useful habit or preference, call remember with their own words: scope "profile" for habits and preferences that matter on future trips${p.share === "profile" ? "" : " (they have not turned that on, so use \"trip\")"}, scope "trip" for what only matters now.`
@@ -384,7 +426,7 @@ export function createEscalaAgent(
         let args: any = {};
         try {
           args = JSON.parse(c.arguments || "{}");
-          result = runTool(c.name, args, p, trip, allowed);
+          result = await runTool(c.name, args, p, trip, allowed);
         } catch (err) {
           result = { error: `tool failed: ${String(err).slice(0, 120)}` };
         }
@@ -412,7 +454,7 @@ export function createEscalaAgent(
           input: [
             ...input,
             { role: "assistant", content: text },
-            { role: "user", content: `Rewrite your answer without these unsupported figures: ${verdict.unmatched.map((u) => u.text).join(", ")}. Keep only what the tools returned.` },
+            { role: "user", content: `Rewrite your answer without these unsupported figures: ${verdict.unmatched.map((u) => u.text).join(", ")}. Keep only what the tools returned. Write it as a fresh answer to the traveler; do not mention that anything was removed or rewritten.` },
           ],
         },
         { caller: "agent/rewrite" },
@@ -423,7 +465,39 @@ export function createEscalaAgent(
     return FALLBACK[p.lang];
   }
 
-  function runTool(name: string, args: any, p: Person, trip: Trip | undefined, allowed: Allowed): unknown {
+  async function runTool(name: string, args: any, p: Person, trip: Trip | undefined, allowed: Allowed): Promise<unknown> {
+    if (name === "search_travel_info") {
+      const query = String(args.query ?? "").slice(0, 300);
+      if (RIGHTS_TOPIC.test(query)) return { error: "rights and compensation come only from rights_for_trip" };
+      const profile = deps.memory && p.share === "profile" ? deps.memory.recall(p.id, { scope: "profile" }).slice(0, 10).map((f) => f.statement) : [];
+      const today = (currentMessage.at || new Date().toISOString()).slice(0, 10);
+      const found = await searchTravel(deps.client, { query, place: typeof args.place === "string" && args.place !== "null" ? args.place : null, lang: p.lang, profile, today });
+      // Figures a source stated may be repeated, attributed to it; they never count toward passenger rights.
+      for (const c of extractClaims(found.findings)) {
+        if (c.kind === "amount" && c.currency) allowed.amounts.push({ currency: c.currency, value: c.value });
+        if (c.kind === "percent") allowed.percents.push(c.value);
+        if (c.kind === "duration") allowed.durations.push(c.value);
+      }
+      return found;
+    }
+    if (name === "convert") {
+      const value = Number(args.value);
+      if (!Number.isFinite(value)) return { error: "value must be a number" };
+      if (args.kind === "units") {
+        const r = convertUnits(value, String(args.from), String(args.to));
+        if ("value" in r) {
+          allowed.durations.push(r.value, value); // plain numbers of a measure
+          if (/^lb$/i.test(r.to)) (allowed.weights ??= []).push(r.value);
+          if (/^lb$/i.test(r.from)) (allowed.weights ??= []).push(value);
+        }
+        return r;
+      }
+      if (!deps.convertCurrency) return { error: "currency conversion is not available" };
+      const r = await deps.convertCurrency(value, String(args.from), String(args.to));
+      // The converted amount as given and rounded to whole units ("1,329 pesos"), and the amount converted.
+      if ("amount" in r && r.amount !== undefined && r.currency) allowed.amounts.push({ currency: r.currency, value: r.amount }, { currency: r.currency, value: Math.round(r.amount) }, { currency: String(args.from).toUpperCase(), value });
+      return r;
+    }
     if (name === "get_flight_status") {
       const snap = deps.feed.findByIdent(args.flight);
       if (!snap) return { error: "no data for this flight" };

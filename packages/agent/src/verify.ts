@@ -10,6 +10,8 @@ export interface Allowed {
   percents: number[];
   /** Hours and days that appear in the cited rules, the trip facts or the flight data. */
   durations: number[];
+  /** Weights in pounds that Escala converted: "50.71 pounds" said of a bag. */
+  weights?: number[];
 }
 
 export interface Claim {
@@ -17,6 +19,8 @@ export interface Claim {
   text: string;
   value: number;
   currency?: string;
+  /** Written as a bare pound, libra or livre: money or a weight. */
+  maybeWeight?: boolean;
 }
 
 export interface Verdict {
@@ -25,16 +29,18 @@ export interface Verdict {
   unmatched: Claim[];
 }
 
+// "Pound", "libra" and "livre" alone are weights as often as money (a 50-pound bag): they are read as pounds sterling,
+// and pass only if they are a weight Escala converted (Allowed.weights), never as money.
 const CURRENCY: Record<string, string> = {
   $: "$", usd: "USD", "us$": "USD", cad: "CAD", "ca$": "CAD", "c$": "CAD", eur: "EUR", "€": "EUR", euros: "EUR", euro: "EUR",
-  gbp: "GBP", "£": "GBP", pound: "GBP", pounds: "GBP", libra: "GBP", libras: "GBP", livre: "GBP", livres: "GBP", sterling: "GBP",
+  gbp: "GBP", "£": "GBP", pound: "GBP", pounds: "GBP", libra: "GBP", libras: "GBP", livre: "GBP", livres: "GBP", sterling: "GBP", esterlina: "GBP", esterlinas: "GBP",
   mxn: "MXN", pesos: "MXN", dólares: "$", dollars: "$", dollar: "$",
   sdr: "SDR", xdr: "SDR", deg: "SDR", dts: "SDR", uma: "UMA",
   jpy: "JPY", "¥": "JPY", yen: "JPY", yenes: "JPY", chf: "CHF", francs: "CHF", francos: "CHF", aud: "AUD", cny: "CNY", inr: "INR",
 };
 // Thousands groups only when there is at least one separator; otherwise "2026" would read as "202" and "6".
 const NUM = String.raw`\d{1,3}(?:[   .,]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?`;
-const CUR = String.raw`US\$|CA\$|C\$|USD|CAD|EUR|GBP|MXN|SDR|XDR|DEG|DTS|UMA|JPY|CHF|AUD|CNY|INR|€|£|¥|\$|euros?|pesos|pounds?|libras?|livres?|sterling|yen(?:es)?|francs?|francos?|(?:US\s|U\.S\.\s|canadian\s)?dollars?|dólares(?:\s(?:estadounidenses|canadienses))?|dollars?\s(?:américains|canadiens)`;
+const CUR = String.raw`US\$|CA\$|C\$|USD|CAD|EUR|GBP|MXN|SDR|XDR|DEG|DTS|UMA|JPY|CHF|AUD|CNY|INR|€|£|¥|\$|euros?|pesos|(?:pounds?|livres?)\s+sterling|libras?\s+esterlinas?|pounds?|libras?|livres?|sterling|yen(?:es)?|francs?|francos?|(?:US\s|U\.S\.\s|canadian\s)?dollars?|dólares(?:\s(?:estadounidenses|canadienses))?|dollars?\s(?:américains|canadiens)`;
 const UNIT = String.raw`s|secs?|seconds?|segundos?|secondes?|h|hrs?|hours?|horas?|heures?|min|minutes?|minutos?|days?|días?|dias?|jours?|weeks?|semanas?|semaines?|months?|meses|mes|mois|years?|años?|ans?|années?`;
 const SP = String.raw`[\s\u00a0\u202f]+`;
 /** Optional separator between a number and its unit: whitespace and stray punctuation ("600-CAD", "600(CAD)"). */
@@ -76,20 +82,20 @@ export function extractClaims(text: string): Claim[] {
     if (/canadian|canadiens|canadienses/.test(r)) return "CAD";
     return CURRENCY[r] ?? CURRENCY[r.split(" ").pop()!] ?? raw;
   };
-  // A range ("400-600", "400 to 600", "entre 400 y 600") carries two claims; both are checked.
+  const weightWord = (raw: string) => (/^(?:pounds?|libras?|livres?)$/i.test(raw.trim()) ? { maybeWeight: true } : {});
   // A range or an alternative ("400-600", "400 to 600", "entre 400 y 600", "400 or 600") carries two claims.
   const RANGE = String.raw`(${NUM})(?:[\s\u00a0\u202f]*(?:-|–|—|\bto\b|\ba\b|\bà\b|\by\b|\bet\b|\band\b|\bor\b|\bo\b|\bou\b)[\s\u00a0\u202f]*(${NUM}))?`;
   for (const m of text.matchAll(new RegExp(String.raw`(${CUR})${SPO}${RANGE}`, "gi"))) {
     const c = cur(m[1]!);
-    push({ kind: "amount", text: m[0], value: parseNumber(m[2]!), currency: c }, m.index!);
-    if (m[3]) push({ kind: "amount", text: m[0], value: parseNumber(m[3]), currency: c }, m.index! + 1);
+    push({ kind: "amount", text: m[0], value: parseNumber(m[2]!), currency: c, ...weightWord(m[1]!) }, m.index!);
+    if (m[3]) push({ kind: "amount", text: m[0], value: parseNumber(m[3]), currency: c, ...weightWord(m[1]!) }, m.index! + 1);
   }
   // "art. 20 — 1,800 CAD": the first number is an article, not the start of a range.
   const afterArticle = (at: number) => /(?:\bart(?:icle|ículo|iculo)?s?\.?|\bs\.|§|\bsection|\bsecci[oó]n|\bpart(?:e|ie)?)\s*$/i.test(text.slice(Math.max(0, at - 12), at));
   for (const m of text.matchAll(new RegExp(String.raw`${RANGE}${SPO}(${CUR})(?![a-z])`, "gi"))) {
     const c = cur(m[3]!);
-    if (m[2] && !afterArticle(m.index!)) push({ kind: "amount", text: m[0], value: parseNumber(m[1]!), currency: c }, m.index! + 2);
-    push({ kind: "amount", text: m[0], value: parseNumber(m[2] ?? m[1]!), currency: c }, m.index!);
+    if (m[2] && !afterArticle(m.index!)) push({ kind: "amount", text: m[0], value: parseNumber(m[1]!), currency: c, ...weightWord(m[3]!) }, m.index! + 2);
+    push({ kind: "amount", text: m[0], value: parseNumber(m[2] ?? m[1]!), currency: c, ...weightWord(m[3]!) }, m.index!);
   }
   for (const m of text.matchAll(new RegExp(String.raw`(${NUM})${SPO}(${PCT})`, "gi"))) {
     push({ kind: "percent", text: m[0], value: parseNumber(m[1]!) }, m.index!);
@@ -111,8 +117,14 @@ export function verify(draft: string, allowed: Allowed): Verdict {
     if (c.kind === "number_word") return true; // cannot be checked: rewrite with digits
     if (c.kind === "percent") return !allowed.percents.includes(c.value);
     if (c.kind === "duration") return !allowed.durations.includes(c.value);
+    if (c.maybeWeight && allowed.weights?.includes(c.value)) return false;
     return !allowed.amounts.some(
-      (a) => a.value === c.value && (a.currency === c.currency || (c.currency === "$" && ["USD", "CAD", "MXN"].includes(a.currency))),
+      (a) =>
+        a.value === c.value &&
+        (a.currency === c.currency ||
+          // "$" is dollars or pesos: a bare "$" matches any of them, either way round (a source wrote "$49.45", the answer "49.45 CAD").
+          (c.currency === "$" && ["USD", "CAD", "MXN"].includes(a.currency)) ||
+          (a.currency === "$" && ["USD", "CAD", "MXN"].includes(c.currency ?? ""))),
     );
   });
   return { ok: unmatched.length === 0, claims, unmatched };

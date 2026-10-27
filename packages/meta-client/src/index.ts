@@ -135,6 +135,7 @@ export function createMetaClient(opts: MetaClientOptions) {
           cachedTokens: num(u.input_tokens_details?.cached_tokens),
           outputTokens: num(u.output_tokens),
           images: call.images ?? 0,
+          webSearches: Array.isArray(json?.output) ? json.output.filter((o: any) => o?.type === "web_search_call").length : 0,
         };
         await opts.usage.write({
           id: newUsageId(),
@@ -145,6 +146,7 @@ export function createMetaClient(opts: MetaClientOptions) {
           cached_tokens: usage.cachedTokens,
           output_tokens: usage.outputTokens,
           images: usage.images,
+          ...(usage.webSearches ? { web_searches: usage.webSearches } : {}),
           latency_ms: Date.now() - started,
           cost_usd: costUsd(model, usage),
           ok: true,

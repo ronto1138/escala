@@ -5,7 +5,7 @@ import { mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AIRPORTS, createEscalaAgent, longestDeadlineDays, readIntent, routeMessage, type TraceStep } from "@escala/agent";
+import { AIRPORTS, createEscalaAgent, createRates, longestDeadlineDays, readIntent, routeMessage, type TraceStep } from "@escala/agent";
 import type { InboundMessage } from "@escala/channel";
 import { Conversation, keywordIntent, type Person } from "@escala/conversation";
 import { loadScenario, ReplayClock } from "@escala/feeds";
@@ -76,7 +76,7 @@ const feed = new ReplayClock(loadScenario(scenario), { secondsPerMinute: Number(
 
 // What the agent decided, for the operations report: counts and kinds only, never content.
 const escala = createEscalaAgent({
-  client, feed, entries: loadEntries(), media: channel, memory, ...(learner ? { learner } : {}),
+  client, feed, entries: loadEntries(), media: channel, memory, ...(learner ? { learner } : {}), convertCurrency: createRates(),
   trace: (s: TraceStep) => log(traceEvent(s)),
 });
 const conversation = new Conversation({

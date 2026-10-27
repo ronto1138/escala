@@ -132,3 +132,20 @@ describe("battery (Oct 26): years and pesos", () => {
     expect(verify("unos $17,596.50", { amounts: [{ currency: "MXN", value: 17596.5 }], percents: [], durations: [] }).ok).toBe(true);
   });
 });
+
+describe("weights are not money", () => {
+  const allowed = { amounts: [], percents: [], durations: [], weights: [50.71] };
+  it("lets a converted bag weight through, never as money", () => {
+    expect(verify("Tu maleta de 23 kg son 50.71 libras.", allowed).ok).toBe(true);
+    expect(verify("Your compensation is 600 pounds.", allowed).ok).toBe(false);
+    expect(verify("Te tocan 50.71 libras esterlinas.", allowed).ok).toBe(false);
+    expect(verify("£50.71", allowed).ok).toBe(false);
+  });
+});
+
+describe("a source's bare dollar sign", () => {
+  it("backs the same figure written with its currency", () => {
+    expect(verify("Taxi: 49.45 CAD", { amounts: [{ currency: "$", value: 49.45 }], percents: [], durations: [] }).ok).toBe(true);
+    expect(verify("Taxi: 50 CAD", { amounts: [{ currency: "$", value: 49.45 }], percents: [], durations: [] }).ok).toBe(false);
+  });
+});

@@ -39,7 +39,12 @@ export interface Usage {
   images: number;
   /** Seconds of audio, for speech-to-text. */
   audioSeconds?: number;
+  /** Built-in web searches the model ran in this response. */
+  webSearches?: number;
 }
+
+/** Built-in web search: US$2.50 per 1,000 searches (https://dev.meta.ai/docs pricing). */
+export const WEB_SEARCH_PER_CALL = 2.5 / 1000;
 
 /** Cost in USD. Cached tokens are billed at the cached rate and are not billed again as regular input. */
 export function costUsd(model: ModelId, u: Usage): number {
@@ -47,7 +52,7 @@ export function costUsd(model: ModelId, u: Usage): number {
   if (p.kind === "images") return round6(u.images * p.perImage);
   if (p.kind === "audio") return round6(((u.audioSeconds ?? 0) / 3600) * p.perHour);
   const fresh = Math.max(0, u.inputTokens - u.cachedTokens);
-  return round6((fresh * p.inputPerM + u.cachedTokens * p.cachedInputPerM + u.outputTokens * p.outputPerM) / 1e6);
+  return round6((fresh * p.inputPerM + u.cachedTokens * p.cachedInputPerM + u.outputTokens * p.outputPerM) / 1e6 + (u.webSearches ?? 0) * WEB_SEARCH_PER_CALL);
 }
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;

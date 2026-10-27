@@ -34,8 +34,9 @@ export function responsesViaOpen(open: OpenModelClient) {
       messages,
       max_tokens: Math.max(2500, 2 * (req.max_output_tokens ?? 0)), // it reasons more than Muse Spark
       reasoning_effort: req.reasoning?.effort === "minimal" || !req.reasoning?.effort ? "low" : req.reasoning.effort,
-      ...(req.tools?.length
-        ? { tools: (req.tools as any[]).map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })) }
+      // Built-in tools (web search) exist only on Meta's API: without them the open model answers from what it has.
+      ...((req.tools as any[] | undefined)?.some((t) => t.type === "function")
+        ? { tools: (req.tools as any[]).filter((t) => t.type === "function").map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })) }
         : {}),
       ...(fmt?.type === "json_schema" ? { response_format: { type: "json_schema", json_schema: { name: fmt.name, schema: fmt.schema, strict: true } } } : {}),
     };

@@ -7,3 +7,4 @@ export { acceptCandidates, LEARN_TOPICS, proposeFacts, type Accepted, type Candi
 export { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
 export { AIRLINES, AIRPORTS, type Airlines, factsFor, greatCircleKm, journeys, type Leg, type Trip } from "./trip.ts";
 export { extractClaims, numbersIn, parseNumber, verify, type Allowed, type Claim, type Verdict } from "./verify.ts";
+export { convertUnits, createRates, parseEcb, RIGHTS_TOPIC, searchTravel, type GuideResult } from "./guide.ts";
