@@ -5,7 +5,7 @@ import { mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AIRPORTS, createEscalaAgent, longestDeadlineDays } from "@escala/agent";
+import { AIRPORTS, createEscalaAgent, longestDeadlineDays, type TraceStep } from "@escala/agent";
 import type { InboundMessage } from "@escala/channel";
 import { Conversation } from "@escala/conversation";
 import { loadScenario, ReplayFeed } from "@escala/feeds";
@@ -55,7 +55,11 @@ const feed = new ReplayFeed(loadScenario(scenario));
 
 // Muse Spark Open on Baseten: the memory that learns (D36). Optional; without the key Escala only remembers on request.
 const learner = env.BASETEN_API_KEY ? createOpenModelClient({ apiKey: env.BASETEN_API_KEY, usage, timeoutMs: 60_000 }) : undefined;
-const escala = createEscalaAgent({ client, feed, entries: loadEntries(), media: channel, memory, ...(learner ? { learner } : {}) });
+// What the agent decided, for the operations report: counts and kinds only, never content.
+const escala = createEscalaAgent({
+  client, feed, entries: loadEntries(), media: channel, memory, ...(learner ? { learner } : {}),
+  trace: (s: TraceStep) => log(traceEvent(s)),
+});
 const conversation = new Conversation({
   channel,
   extractItinerary: escala.extractItinerary,
@@ -106,13 +110,28 @@ const deliver = (m: InboundMessage) => {
     return Promise.resolve();
   }
   pending.set(m.from, (pending.get(m.from) ?? 0) + 1);
+  const received = Date.now();
   const next = (queues.get(m.from) ?? Promise.resolve())
     .then(() => channel.deliver(m))
+    .then(() => log({ event: "handled", from: tag(m.from), kind: m.kind, ms: Date.now() - received }))
     .catch((err) => log({ event: "error", from: tag(m.from), error: String(err).slice(0, 200) }))
     .finally(() => pending.set(m.from, Math.max(0, (pending.get(m.from) ?? 1) - 1)));
   queues.set(m.from, next);
   void next.finally(() => queues.get(m.from) === next && queues.delete(m.from));
   return Promise.resolve();
+};
+
+// Every message sent, counted by kind; failures with Meta's error code (never the text).
+const sendRaw = channel.send.bind(channel);
+channel.send = async (to, m) => {
+  try {
+    const r = await sendRaw(to, m);
+    log({ event: "sent", kind: m.kind });
+    return r;
+  } catch (err) {
+    log({ event: "send_failed", kind: m.kind, error: String(err).slice(0, 160) });
+    throw err;
+  }
 };
 
 const handler = createWebhookHandler({ verifyToken: need("WHATSAPP_VERIFY_TOKEN"), appSecret: env.WHATSAPP_APP_SECRET, deliver, log });
@@ -132,3 +151,20 @@ server.requestTimeout = 30_000;
 server.listen(port, host, () => {
   log({ event: "listening", host, port, signed_deliveries: Boolean(env.WHATSAPP_APP_SECRET) });
 });
+
+/** One agent step as a log event, without any content: how many parts, blocked figures, tool names, outcomes. */
+function traceEvent(s: TraceStep): Record<string, unknown> {
+  switch (s.kind) {
+    case "scope":
+      return { event: "guard", parts: s.parts.length, out: s.parts.filter((p) => !p.in_scope).length };
+    case "verify":
+      return { event: "verify_figures", attempt: s.attempt, ok: s.verdict.ok, claims: s.verdict.claims.length, blocked: s.verdict.unmatched.length };
+    case "fallback":
+      return { event: "fallback", reason: s.reason.slice(0, 60) };
+    case "tool": {
+      const r = s.result as { kept?: unknown[]; error?: unknown } | undefined;
+      return { event: "tool", name: s.name, ...(s.name === "learn" ? { kept: r?.kept?.length ?? 0 } : {}), ...(r && typeof r === "object" && "error" in r ? { failed: true } : {}) };
+    }
+  }
+}
+
