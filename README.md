@@ -9,9 +9,11 @@ when Escala does not know, it says so.
 Built for the **Meta Global AI Developer Hackathon** (Oct 26 – Nov 4, 2026), theme *Build for Your World*,
 with Meta's models through the Meta Model API.
 
-> Status: **Day 1 (Oct 26).** The demo trip runs end to end in a local WhatsApp simulator with Muse Spark:
-> itinerary from a screenshot, flight watching with the inbound-aircraft inference, passenger rights decided by
-> rules, every figure checked before it is sent. The real WhatsApp number and the trust panel come next.
+> Status: **Day 2 (Oct 27).** Escala is live on WhatsApp (Meta's test number), running on Railway. It reads an
+> itinerary from a screenshot, watches flights (with the inbound-aircraft inference), decides passenger rights by
+> rules across the US, Canada, Mexico, the EU, the UK and the Montreal Convention, checks every figure before it is
+> sent, understands voice notes in three languages, and records the condition of a bag or a rental car from a photo.
+> Privacy policy: https://escala-production-e918.up.railway.app/privacy. The trust panel comes next.
 
 ## What's inside
 
@@ -22,7 +24,9 @@ with Meta's models through the Meta Model API.
 | `feeds` | Flight data: a replay feed of synthetic scenarios in the AeroAPI v4 shape, and a change detector that infers delays from a late inbound aircraft, always flagged as an inference |
 | `channel` | WhatsApp Cloud API payloads checked against platform limits, webhook signature verification, and a simulator with the same rules, including the 24-hour window |
 | `conversation` | Conversation first: people say what they need in their own words; a short first-contact introduction; the menu only on request |
-| `agent` | Muse Spark with tools (flight status, rights for this trip), a scope guard that keeps every answer on the trip, and a deterministic verifier that blocks any amount, percentage or deadline the rules did not produce |
+| `agent` | Muse Spark with tools (flight status, rights for this trip, memory), a scope guard that keeps every answer on the trip, a deterministic verifier that blocks any amount, percentage or deadline the rules did not produce, and evidence photos read with Muse Spark and SAM 3.1 |
+| `memory` | What Escala remembers, encrypted per person (AES-256-GCM), with the source of every fact, consent for anything beyond the trip, and retention enforced: trip facts expire with the trip and its claim deadlines |
+| `server` | The WhatsApp service: signed webhook, Cloud API channel, voice notes through Muse Voice Transcribe, spending limits, the privacy page, and the hourly retention sweep |
 
 ## Run the tests
 
