@@ -77,6 +77,7 @@ const feed = new ReplayClock(loadScenario(scenario), { secondsPerMinute: Number(
 // What the agent decided, for the operations report: counts and kinds only, never content.
 const escala = createEscalaAgent({
   client, feed, entries: loadEntries(), media: channel, memory, ...(learner ? { learner } : {}), convertCurrency: createRates(),
+  progress: async (id, text) => void (await channel.send(id, { kind: "text", text })),
   trace: (s: TraceStep) => log(traceEvent(s)),
 });
 const conversation = new Conversation({

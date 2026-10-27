@@ -8,6 +8,7 @@ export {
   type Person,
   type PersonStore,
   type Route,
+  type SharedLocation,
   type Turn,
   type ShareLevel,
   type Stage,

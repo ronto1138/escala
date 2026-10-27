@@ -50,7 +50,19 @@ export interface Person {
   trip?: unknown;
   /** The last turns, newest last (at most 12, at most 48 hours old). */
   recent?: Turn[];
+  /** Where the person said they are, for directions and nearby suggestions. Kept for two hours, never remembered. */
+  location?: SharedLocation;
 }
+
+export interface SharedLocation {
+  lat: number;
+  lon: number;
+  /** The place the person picked in WhatsApp, if any. */
+  name?: string;
+  at: string;
+}
+
+const LOCATION_KEEP_MS = 2 * 60 * 60 * 1000;
 
 /** Persistence for people's state, so a deploy or restart does not forget a question Escala asked. */
 export interface PersonStore {
@@ -136,13 +148,18 @@ export class Conversation {
     const at = Number.isFinite(parsed) ? parsed : Date.now();
     let p = this.people.get(m.from) ?? this.deps.store?.load(m.from);
     if (p) this.people.set(m.from, p);
+    if (p && m.kind === "location" && Math.abs(m.latitude) <= 90 && Math.abs(m.longitude) <= 180) {
+      p.location = { lat: m.latitude, lon: m.longitude, ...(m.name ? { name: m.name.slice(0, 100) } : {}), at: m.at };
+    }
     const before = p?.recent?.length ?? 0; // the replies to this message are added after this point
     try {
       await this.process(m, text, word, at, p);
     } finally {
       const after = this.people.get(m.from);
       if (after) {
-        if (text) this.rememberInbound(after, text, m.at, after === p ? before : 0);
+        // A shared location is remembered as a turn by its place name only, so a later "how do I get there" has context.
+        const said = text || (m.kind === "location" ? `📍 ${m.name ?? "(location shared)"}` : "");
+        if (said) this.rememberInbound(after, said, m.at, after === p ? before : 0);
         else after.recent = (after.recent ?? []).filter((t) => Date.parse(t.at) >= Date.now() - RECENT_MS).slice(-RECENT_TURNS);
         this.deps.store?.save(after);
       }
@@ -322,6 +339,10 @@ export class Conversation {
   evict(now: number, claimDays: number): number {
     let n = 0;
     for (const [id, p] of this.people) {
+      if (p.location && now - Date.parse(p.location.at) >= LOCATION_KEEP_MS) {
+        delete p.location;
+        this.deps.store?.save(p);
+      }
       const lastFlight = (p.trip as { legs?: Array<{ date: string }> } | undefined)?.legs?.map((l) => l.date).sort().at(-1);
       const until = lastFlight ? Date.parse(`${lastFlight}T00:00:00Z`) + (claimDays + 1) * 86_400_000 : (p.lastSeen ?? now) + 30 * 86_400_000;
       if (now >= until) {

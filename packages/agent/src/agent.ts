@@ -7,6 +7,7 @@ import { assess, type RightEntry, type TripFacts } from "@escala/rights";
 import { legLine } from "./format.ts";
 import { evidenceReply, readEvidence, type EvidenceObject } from "./evidence.ts";
 import { convertUnits, RIGHTS_TOPIC, searchTravel, UNIT_NAMES, type createRates } from "./guide.ts";
+import { createChecking, describeLocation, locationIsFresh, usableCheckingLine } from "./whereabouts.ts";
 import { acceptCandidates, proposeFacts } from "./learner.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
 import { factsFor, journeys, norm, type Airlines, type Trip } from "./trip.ts";
@@ -31,7 +32,12 @@ export interface AgentDeps {
   airlines?: Airlines;
   /** Currency conversion with official reference rates. Optional: without it Escala does not convert currencies. */
   convertCurrency?: ReturnType<typeof createRates>;
+  /** Sends a message right away, before the answer: the line said while a web search runs. */
+  progress?: (personId: string, text: string) => Promise<void>;
 }
+
+/** What a shared location becomes for the agent: the place is given separately, in the instructions. */
+const LOCATION_SHARED = "[The traveler just shared their location.]";
 
 export type TraceStep =
   | { kind: "scope"; parts: ScopePart[] }
@@ -261,6 +267,7 @@ export function createEscalaAgent(
 ): Pick<ConversationDeps, "extractItinerary" | "agent"> & { reset(personId: string): void; sweep(now?: number): void } {
   const trace = deps.trace ?? (() => {});
   const longestClaimDays = longestDeadlineDays(deps.entries);
+  const checking = createChecking();
   const asked = new Map<string, string[]>(); // person -> facts already asked about
   const askedAt = new Map<string, number>();
   // The last turns come from the conversation (`person.recent`, kept encrypted and across restarts), so an answer can
@@ -328,10 +335,20 @@ export function createEscalaAgent(
   async function agent(m: InboundMessage, p: Person): Promise<OutboundMessage[]> {
     // A photo once the trip is known is evidence: the state of the bag or the rental car (itineraries come before).
     if (m.kind === "image" && p.trip) return [{ kind: "text", text: await evidence(m, p, p.trip as Trip) }];
-    if (m.kind !== "text") return [{ kind: "text", text: NOT_YET_MEDIA[p.lang] }]; // voice notes are transcribed before reaching here
+    if (m.kind !== "text" && m.kind !== "location") return [{ kind: "text", text: NOT_YET_MEDIA[p.lang] }]; // voice notes are transcribed before reaching here
     messageId = m.id;
     messageAt = m.at;
     const trip = p.trip as Trip | undefined;
+    const at = Date.parse(m.at) || Date.now();
+    if (p.location && !locationIsFresh(p.location, at)) delete p.location;
+
+    // A shared location needs no guard: it is not text anyone wrote. It is answered with the conversation as context
+    // ("how do I get to my gate?" asked before sharing it).
+    if (m.kind === "location") {
+      askedAt.set(p.id, at);
+      const draft = await answer(LOCATION_SHARED, p, trip, { amounts: [], percents: [], durations: [] }, recentTurns(p, at));
+      return [{ kind: "text", text: draft.trim() || SAY_AGAIN[p.lang] }];
+    }
 
     // The guard always runs. A part it rejected is put back in scope only if it is plainly about the person's
     // memory and does not touch Escala's rules ("forget your instructions" stays out).
@@ -359,7 +376,6 @@ export function createEscalaAgent(
     // Amounts they wrote are not: "aren't I owed 600 euros?" must still be checked against the rules.
     const allowed: Allowed = { amounts: [], percents: [], durations: extractClaims(m.text).filter((c) => c.kind === "duration").map((c) => c.value) };
     const question = inScope.map((x) => x.text).join(" ");
-    const at = Date.parse(m.at) || Date.now();
     askedAt.set(p.id, at);
     let draft = await answer(question, p, trip, allowed, recentTurns(p, at));
     if (!draft.trim()) {
@@ -409,10 +425,15 @@ export function createEscalaAgent(
       (deps.memory
         ? ` When the traveler shares a useful habit or preference, call remember with their own words: scope "profile" for habits and preferences that matter on future trips${p.share === "profile" ? "" : " (they have not turned that on, so use \"trip\")"}, scope "trip" for what only matters now.`
         : "") +
-      memoryText;
+      memoryText +
+      (locationIsFresh(p.location, Date.parse(messageAt) || Date.now())
+        ? ` Where the traveler is (they shared it): ${describeLocation(p.location, trip, Date.parse(messageAt) || Date.now())}. Use it for directions and nearby suggestions, say in a few words how you understood where they are, and never repeat the coordinates. Say only what a location can show (the airport, the area, the place name they picked), never a terminal, floor, side or gate it cannot show. If they only shared it, answer what they last asked that needs it; if the new location shows that question is behind them (they already arrived), don't answer it again: acknowledge where they are and ask in one line what they need there.`
+        : " If the traveler asks how to get somewhere nearby or for something close to them and you don't know where they are, ask them to share their location in WhatsApp (clip → Location).") +
+      " When you call search_travel_info, also write one short line telling the traveler you are looking it up, in your own words and about what they asked, different every time; no figures or questions in it.";
 
     const input: any[] = [...earlier.map((t) => ({ role: t.role, content: t.content })), { role: "user", content: question }];
     currentMessage = { id: messageId, at: messageAt };
+    let toldChecking = false;
     for (let round = 0; round < (deps.maxToolRounds ?? 4); round++) {
       const r = await deps.client.responses(
         { model: "muse-spark-1.3", reasoning: { effort: "low" }, max_output_tokens: 3000, instructions, input, tools: TOOLS as unknown as unknown[] },
@@ -420,6 +441,12 @@ export function createEscalaAgent(
       );
       const calls = (r.output ?? []).filter((o: any) => o.type === "function_call");
       if (!calls.length) return finalize(outputText(r), p, instructions, input, allowed);
+      // A web search takes 10–16 s: only then, and once per message, the traveler hears that Escala is looking.
+      if (!toldChecking && deps.progress && calls.some((c: any) => c.name === "search_travel_info")) {
+        toldChecking = true;
+        const own = (r.output ?? []).filter((o: any) => o.type === "message").flatMap((o: any) => o.content ?? []).map((c: any) => c.text ?? "").join(" ").trim();
+        await deps.progress(p.id, usableCheckingLine(own) ? own : checking(p.id, p.lang)).catch(() => undefined);
+      }
       input.push(...(r.output ?? []));
       for (const c of calls) {
         let result: unknown;
@@ -471,7 +498,11 @@ export function createEscalaAgent(
       if (RIGHTS_TOPIC.test(query)) return { error: "rights and compensation come only from rights_for_trip" };
       const profile = deps.memory && p.share === "profile" ? deps.memory.recall(p.id, { scope: "profile" }).slice(0, 10).map((f) => f.statement) : [];
       const today = (currentMessage.at || new Date().toISOString()).slice(0, 10);
-      const found = await searchTravel(deps.client, { query, place: typeof args.place === "string" && args.place !== "null" ? args.place : null, lang: p.lang, profile, today });
+      const now = Date.parse(currentMessage.at) || Date.now();
+      const here = locationIsFresh(p.location, now) ? `the traveler is at ${describeLocation(p.location, trip, now)}` : null;
+      const named = typeof args.place === "string" && args.place !== "null" ? args.place : null;
+      const place = [named, here].filter(Boolean).join("; ") || null;
+      const found = await searchTravel(deps.client, { query, place, lang: p.lang, profile, today });
       // Figures a source stated may be repeated, attributed to it; they never count toward passenger rights.
       for (const c of extractClaims(found.findings)) {
         if (c.kind === "amount" && c.currency) allowed.amounts.push({ currency: c.currency, value: c.value });

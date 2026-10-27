@@ -330,3 +330,28 @@ describe("D42: exact shortcut before the model", () => {
     expect(conv.people.get("61")?.stage).toBe("ready");
   });
 });
+
+describe("shared location", () => {
+  it("is kept with the person, reaches the agent, and is dropped after two hours", async () => {
+    let now = Date.parse("2026-11-02T18:00:00Z");
+    const sim = new SimChannel(() => now);
+    const seen: string[] = [];
+    const conv = new Conversation({
+      channel: sim,
+      extractItinerary: async () => null,
+      agent: async (m, p) => {
+        seen.push(m.kind);
+        return [{ kind: "text", text: p.location ? "near you" : "where are you?" }];
+      },
+    });
+    await sim.userSends("15550001234", { kind: "text", text: "hola" });
+    await sim.userSends("15550001234", { kind: "location", latitude: 45.4706, longitude: -73.7408, name: "YUL" });
+    const p = conv.people.get("15550001234")!;
+    expect(p.location).toMatchObject({ lat: 45.4706, lon: -73.7408, name: "YUL" });
+    expect(seen).toContain("location");
+    expect(p.recent?.some((t) => t.text === "📍 YUL")).toBe(true);
+    now += 2 * 60 * 60 * 1000;
+    conv.evict(now, 400);
+    expect(conv.people.get("15550001234")?.location).toBeUndefined();
+  });
+});

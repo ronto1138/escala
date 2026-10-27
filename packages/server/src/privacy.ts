@@ -69,6 +69,8 @@ and what a voice note was heard as) to find mistakes and improve Escala. Use mad
   <li>The last turns of the conversation (at most 12, for up to 48 hours), where you are in it and your trip are kept encrypted the same
   way, so Escala understands a reply in context, even after a restart. They expire on the same rules as below.</li>
   <li>Voice notes are converted to text (Muse Voice Transcribe) and then handled like a written message; the audio itself is not kept.</li>
+  <li>If you share your location in WhatsApp, Escala uses it for directions and nearby suggestions: it goes to Meta's model with your
+  question, is kept encrypted for two hours and then deleted, and is never remembered for future trips.</li>
   <li>Server logs record that a message arrived and its type, with a keyed tag instead of your number, plus usage and error codes;
   apart from the sealed test-phase lines above, they are not meant to hold what you write, and error texts are cut short.</li>
   <li>To keep costs bounded, each person can send a limited number of messages, photos and voice notes per hour.</li>
