@@ -41,11 +41,21 @@ export async function routeMessage(client: MetaClient, text: string, p: Person):
     p.trip ? "The traveler already has a confirmed trip." : "No confirmed trip yet.",
     `Memory setting: ${p.share === "profile" ? "learns for next time" : "this trip only"}.`,
   ].filter(Boolean).join("\n");
+  // The model sometimes spends its budget reasoning and returns nothing: one retry with more room.
+  let j: any;
+  for (const budget of [1200, 2400]) {
+    j = await ask(budget);
+    if (j) break;
+  }
+  if (!j) throw new Error("the router returned no answer twice");
+  return toRoute(j);
+
+  async function ask(budget: number): Promise<any> {
   const r = await client.responses(
     {
       model: "muse-spark-1.3",
       reasoning: { effort: "minimal" },
-      max_output_tokens: 600,
+      max_output_tokens: budget,
       instructions:
         "You read one WhatsApp message to Escala, a travel companion, and decide what it is, using the conversation so far. " +
         "People answer questions late and in their own words; a reply to a pending question is an answer to it even hours later. " +
@@ -56,7 +66,15 @@ export async function routeMessage(client: MetaClient, text: string, p: Person):
     },
     { caller: "conversation/route" },
   );
-  const j = JSON.parse(outputText(r));
+  try {
+    return JSON.parse(outputText(r));
+  } catch {
+    return undefined;
+  }
+  }
+}
+
+function toRoute(j: any): Route {
   switch (j.kind) {
     case "share":
       return j.share === "profile" || j.share === "trip" ? { kind: "share", share: j.share } : { kind: "other" };

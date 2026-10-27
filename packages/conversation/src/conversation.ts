@@ -1,5 +1,5 @@
 import type { ChannelPort, InboundMessage, OutboundMessage, ParticipantId } from "@escala/channel";
-import { DELETE_ALL_PHRASES, DELETE_WORDS, detectLang, MENU_WORDS, PRIVACY_WORDS, STOP_WORDS, T, type Lang } from "./i18n.ts";
+import { DELETE_ALL_PHRASES, DELETE_WORDS, detectLang, EXACT_NO, EXACT_YES, MENU_WORDS, PRIVACY_WORDS, STOP_WORDS, T, type Lang } from "./i18n.ts";
 
 export type Stage = "new" | "onboarding" | "ready" | "stopped";
 export type ShareLevel = "trip" | "profile";
@@ -190,6 +190,15 @@ export class Conversation {
 
     if (MENU_WORDS.includes(word)) return this.mainMenu(p);
     if (PRIVACY_WORDS.includes(word)) return this.say(p, T[p.lang].privacy);
+
+    // Exact shortcut (D42): a whole-message "sí" / "no" that answers the itinerary Escala just showed needs no model.
+    if (this.deps.route && m.kind === "text" && p.awaiting === "confirm" && p.pending) {
+      if (EXACT_YES.includes(word)) return this.confirm(p);
+      if (EXACT_NO.includes(word)) {
+        p.awaiting = "fix";
+        return this.say(p, T[p.lang].fixPrompt);
+      }
+    }
 
     // A model that sees the conversation decides what the message is; keywords below are only the fallback.
     if (this.deps.route && m.kind === "text" && text) {

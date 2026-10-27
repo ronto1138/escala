@@ -310,3 +310,23 @@ describe("Oct 27 field test: read in context, across restarts", () => {
     expect(conv.people.get("53")).toMatchObject({ share: "trip", awaiting: null });
   });
 });
+
+describe("D42: exact shortcut before the model", () => {
+  it("a whole 'sí' confirms without the model; 'sí pero…' goes to the model", async () => {
+    const sim = new SimChannel();
+    let routed = 0;
+    const conv = new Conversation({
+      channel: sim,
+      extractItinerary: async () => ({ lines: ["ZZ 1234"], trip: { legs: [] } }),
+      route: async () => (routed++, { kind: "fix", correction: "el segundo es el ZZ568" }),
+    });
+    await sim.userSends("61", { kind: "text", text: "Mis vuelos: ZZ1234 AUS-ORD el 2 de noviembre" });
+    expect(conv.people.get("61")?.awaiting).toBe("confirm");
+    await sim.userSends("61", { kind: "text", text: "sí pero el segundo es el ZZ568" });
+    expect(routed).toBe(1);
+    expect(conv.people.get("61")?.awaiting).toBe("confirm"); // re-read with the correction, asked again
+    await sim.userSends("61", { kind: "text", text: "Sí" });
+    expect(routed).toBe(1); // no model for a plain yes
+    expect(conv.people.get("61")?.stage).toBe("ready");
+  });
+});

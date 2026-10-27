@@ -7,6 +7,14 @@ export const LANGS: Lang[] = ["en", "es", "fr"];
 export const MENU_WORDS = ["menu", "menú", "aide", "help", "ayuda"];
 export const PRIVACY_WORDS = ["privacy", "privacidad", "confidentialité", "confidentialite"];
 export const STOP_WORDS = ["stop", "alto", "baja", "arrêt", "arret", "unsubscribe"];
+/**
+ * Whole-message answers that need no model when they fit the pending question (decision D42, measured on 50 cases:
+ * same accuracy as the model alone, 30 % fewer model calls). Only the entire message counts: "sí pero el segundo es
+ * el ZZ568" is not a "sí" and goes to the model.
+ */
+export const EXACT_YES = ["sí", "si", "ok", "okay", "va", "perfecto", "correcto", "exacto", "así es", "claro", "yes", "yep", "yeah", "sure", "correct", "oui", "d'accord", "parfait", "c'est bon", "👍"];
+export const EXACT_NO = ["no", "nope", "non", "nop"];
+
 export const DELETE_WORDS = ["delete", "borrar", "bórralo", "borra todo", "effacer", "efface", "supprimer"];
 /** Erase everything even inside a longer sentence. A lone delete word inside a sentence ("delete the note about my
  * bag") is a request about one thing and goes to the agent, which forgets just that. */
