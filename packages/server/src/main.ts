@@ -8,13 +8,14 @@ import { fileURLToPath } from "node:url";
 import { AIRPORTS, createEscalaAgent, longestDeadlineDays, type TraceStep } from "@escala/agent";
 import type { InboundMessage } from "@escala/channel";
 import { Conversation } from "@escala/conversation";
-import { loadScenario, ReplayFeed } from "@escala/feeds";
+import { loadScenario, ReplayClock } from "@escala/feeds";
 import { MemoryCrypto, MemoryStore } from "@escala/memory";
 import { createMetaClient, createOpenModelClient, fileSink, type UsageLine } from "@escala/meta-client";
 import { loadEntries } from "@escala/rights";
 import { toWav, tripKeywords } from "./audio.ts";
 import { Budget } from "./budget.ts";
 import { CloudApiChannel } from "./cloud.ts";
+import { createNotifier } from "./notifier.ts";
 import { createWebhookHandler, tag } from "./webhook.ts";
 
 const env = process.env;
@@ -51,7 +52,9 @@ const memory = new MemoryStore({ path: dbPath, crypto: MemoryCrypto.fromEnv() })
 // Retention is enforced, not just promised: expired facts are deleted at start and every hour.
 const claimDays = longestDeadlineDays(loadEntries());
 const scenario = fileURLToPath(new URL("../../feeds/scenarios/demo-inbound-late.yaml", import.meta.url));
-const feed = new ReplayFeed(loadScenario(scenario));
+// Flights are simulated (no flight data provider yet): the demo scenario plays in real time, faster than life, from
+// the moment someone confirms a trip with its flights, so changes and their alerts arrive on their own.
+const feed = new ReplayClock(loadScenario(scenario), { secondsPerMinute: Number(env.REPLAY_SECONDS_PER_MINUTE ?? 3) });
 
 // Muse Spark Open on Baseten: the memory that learns (D36). Optional; without the key Escala only remembers on request.
 const learner = env.BASETEN_API_KEY ? createOpenModelClient({ apiKey: env.BASETEN_API_KEY, usage, timeoutMs: 60_000 }) : undefined;
@@ -79,6 +82,14 @@ const conversation = new Conversation({
     }
   },
   onShareChanged: async (p) => void memory.updateSettings(p.id, { share: p.share }),
+  onTripConfirmed: async (p) => {
+    const legs = (p.trip as { legs?: Array<{ flight: string }> } | undefined)?.legs ?? [];
+    const played = feed.idents();
+    if (legs.some((l) => played.includes(l.flight.replace(/\s+/g, "").toUpperCase()))) {
+      feed.restart();
+      log({ event: "demo_replay", from: tag(p.id) });
+    }
+  },
   onDelete: async (id) => {
     memory.forget(id, "all");
     escala.reset(id);
@@ -133,6 +144,10 @@ channel.send = async (to, m) => {
     throw err;
   }
 };
+
+// Flight changes become messages: free text inside the 24-hour window, the approved template outside it.
+const notify = createNotifier({ send: (to, m) => channel.send(to, m), windowOpen: (to) => channel.windowOpen(to), people: () => conversation.people.values(), log });
+feed.subscribe((events, snap) => void notify(events, snap));
 
 const handler = createWebhookHandler({ verifyToken: need("WHATSAPP_VERIFY_TOKEN"), appSecret: env.WHATSAPP_APP_SECRET, deliver, log });
 const host = env.HOST ?? "127.0.0.1";

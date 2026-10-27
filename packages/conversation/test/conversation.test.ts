@@ -236,3 +236,16 @@ describe("audit Oct 26: state held in the process expires", () => {
     expect(conv.people.size).toBe(0);
   });
 });
+
+describe("buttons and menu rows are the person's words", () => {
+  it("a template button tap and a menu row reach the agent as text", async () => {
+    const sim = new SimChannel();
+    const seen: string[] = [];
+    new Conversation({ channel: sim, extractItinerary: async () => null, agent: async (m) => (m.kind === "text" ? (seen.push(m.text), []) : []) });
+    await sim.userSends("41", { kind: "text", text: "Hola" });
+    await sim.userSends("41", { kind: "text", text: "solo este viaje" });
+    await sim.userSends("41", { kind: "template_button", payload: "", text: "¿Qué significa?" });
+    await sim.userSends("41", { kind: "interactive", replyId: "trip.status", title: "Estado del vuelo" });
+    expect(seen).toEqual(["¿Qué significa?", "Estado del vuelo"]);
+  });
+});

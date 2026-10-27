@@ -69,6 +69,11 @@ export class Conversation {
 
   async handle(incoming: InboundMessage): Promise<void> {
     let m = incoming;
+    // A tap on a template button or a menu row is what the person chose to say: it is handled as their words.
+    if (m.kind === "template_button" || m.kind === "interactive") {
+      const said = (m.kind === "template_button" ? m.text || m.payload : m.title || m.replyId).trim();
+      m = { id: m.id, from: m.from, at: m.at, kind: "text", text: said };
+    }
     // A voice note becomes the words it carries, and from here on it is handled exactly like text: "delete
     // everything" or "stop" said aloud work too. Escala repeats what it understood, so a misheard word shows at once.
     if (m.kind === "audio" && this.deps.transcribe) {
