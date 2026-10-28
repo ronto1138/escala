@@ -123,7 +123,13 @@ function offsetMs(tz: string, at: number): number {
  * the itinerary and the clock: before the first flight, between flights, in the air, or after the last one.
  * WhatsApp does not tell us the phone's time zone, so the airport's zone stands in for it.
  */
-export function whereNow(trip: Trip | undefined, now: number, loc?: SharedLocation): { iata: string; city: string; tz: string; why: string } | null {
+export function whereNow(
+  trip: Trip | undefined,
+  now: number,
+  loc?: SharedLocation,
+  /** Best-known times of a leg (estimated or actual), when the flight is followed; the itinerary's otherwise. */
+  live?: (flight: string) => { dep: number; arr: number } | undefined,
+): { iata: string; city: string; tz: string; why: string } | null {
   if (loc && locationIsFresh(loc, now)) {
     const near = nearestTripAirport(loc, trip);
     if (near && near.km <= 80) return { iata: near.iata, city: near.city, tz: AIRPORTS[near.iata]!.tz, why: "from the location they shared" };
@@ -133,7 +139,8 @@ export function whereNow(trip: Trip | undefined, now: number, loc?: SharedLocati
       const dep = legInstant(l.date, l.dep_local, l.from);
       let arr = legInstant(l.date, l.arr_local, l.to);
       if (arr < dep) arr += 24 * 60 * 60 * 1000; // lands the next day
-      return { l, dep, arr };
+      const known = live?.(l.flight);
+      return known ? { l, dep: known.dep, arr: known.arr } : { l, dep, arr };
     })
     .filter((x) => Number.isFinite(x.dep))
     .sort((a, b) => a.dep - b.dep);

@@ -1,6 +1,6 @@
 import type { InboundMessage, OutboundMessage } from "@escala/channel";
 import type { ConversationDeps, ExtractedTrip, Lang, Person } from "@escala/conversation";
-import { arrivalMinutesLate, inboundChain, inboundInference, type FlightFeed } from "@escala/feeds";
+import { arrivalMinutesLate, inboundChain, inboundInference, ruleFor, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
 import { outputText, type MetaClient, type OpenModelClient } from "@escala/meta-client";
 import { ConsentError, tripRetention, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
@@ -324,6 +324,12 @@ export function createEscalaAgent(
       .slice(-HISTORY_TURNS)
       .map((t) => ({ role: t.role === "traveler" ? ("user" as const) : ("assistant" as const), content: t.text }));
 
+  const liveTimes = (flight: string) => {
+    const s = deps.feed.findByIdent(flight);
+    const dep = Date.parse(s?.departure.actual ?? s?.departure.estimated ?? s?.departure.scheduled ?? "");
+    const arr = Date.parse(s?.arrival.actual ?? s?.arrival.estimated ?? s?.arrival.scheduled ?? "");
+    return Number.isFinite(dep) && Number.isFinite(arr) ? { dep, arr } : undefined;
+  };
   // A trip on the demo's simulated flights lives on the story's clock (it runs faster than life); any other, on the real one.
   const storyNow = (trip: Trip | undefined) =>
     deps.feed.now && trip?.legs.some((l) => deps.feed.findByIdent(l.flight)) ? deps.feed.now() : Date.parse(messageAt) || Date.now();
@@ -489,7 +495,7 @@ export function createEscalaAgent(
       ((here) =>
         here
           ? ` Right now it is ${localClock(storyNow(trip), here.tz)} in ${here.city}, where the traveler most likely is (${here.why}). Give every time as a clock time, local at its airport, and say which city when it could be confused.`
-          : "")(whereNow(trip, storyNow(trip), p.location)) +
+          : "")(whereNow(trip, storyNow(trip), p.location, liveTimes)) +
       " When you call search_travel_info, also write one short line telling the traveler you are looking it up, in your own words and about what they asked, different every time; no figures or questions in it.";
 
     const input: any[] = [...earlier.map((t) => ({ role: t.role, content: t.content })), { role: "user", content: question }];
@@ -620,6 +626,7 @@ export function createEscalaAgent(
         arrival_minutes_late: lateMin,
         cancelled: snap.cancelled,
         aircraft_type: snap.aircraftType,
+        boarding: boardingFor(snap, dz),
         inbound_aircraft_inference: inference
           ? {
               likely_departure_delay_minutes: inboundMin,
@@ -783,6 +790,23 @@ export function createEscalaAgent(
         }
       }
     },
+  };
+}
+
+/** What the airline publishes about boarding, as local clock times from the best-known departure; null if it publishes nothing. */
+function boardingFor(snap: FlightSnapshot, tz: string) {
+  const r = ruleFor(snap);
+  const dep = Date.parse(snap.departure.estimated ?? snap.departure.scheduled ?? "");
+  if (!r || !Number.isFinite(dep)) return { published: false, note: "the airline does not publish its boarding times: the boarding pass shows them" };
+  const at = (min?: number) => (min ? local(new Date(dep - min * 60_000).toISOString(), tz) : null);
+  return {
+    published: true,
+    by: r.rule.example ? "example rule of the demo's simulated airline" : r.rule.airline,
+    source: r.rule.url || null,
+    checked_on: r.rule.checkedOn || null,
+    boarding_starts: at(r.startsMin),
+    be_at_gate_by: at(r.gateByMin),
+    gate_closes: at(r.closesMin),
   };
 }
 

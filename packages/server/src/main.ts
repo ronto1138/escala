@@ -77,7 +77,7 @@ const demoScenario = loadScenario(scenario);
 // The story's events every few seconds, then a faster stretch up to boarding time so the gate reminder comes within minutes.
 const feed = new ReplayClock(demoScenario, {
   secondsPerMinute: Number(env.REPLAY_SECONDS_PER_MINUTE ?? 3),
-  tailMinutes: 150,
+  tailMinutes: 90, // stops at minute 180: ZZ1234's reminder is at 170, its boarding at 190
   tailSecondsPerMinute: Number(env.REPLAY_TAIL_SECONDS_PER_MINUTE ?? 0.5),
 });
 // The demo trip (D48): the scenario's two connecting flights, dated so the story starts when the person asks for it.
