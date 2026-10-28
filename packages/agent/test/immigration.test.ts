@@ -43,4 +43,14 @@ describe("immigration card", () => {
     const [chicago] = immigrationStops(viaChicago);
     expect(immigrationText(viaChicago, chicago!, {}, "es")).toMatch(/^🛂 Para migración en Chicago O'Hare: ahí pasas migración y aduana de EE\. UU\. aunque solo vayas en conexión\. Toma captura/);
   });
+
+  it("names the next flight's own city and day, and calls only a flight home the way back (Muse Code audit d)", () => {
+    const twoHops = { bookingRef: null, legs: [leg("ZZ1", "MEX", "ORD", "2026-11-02", "08:00", "12:15"), leg("ZZ2", "ORD", "YUL", "2026-11-03", "09:00", "12:00"), leg("ZZ3", "YUL", "DUB", "2026-11-03", "18:00", "06:00")] };
+    const [chicago] = immigrationStops(twoHops);
+    expect(immigrationCard(twoHops, chicago!, {}).card[0]!.lines).toEqual(["I am only connecting: on November 3 I fly on to Montreal on flight ZZ 2."]);
+    const onward = { bookingRef: null, legs: [leg("ZZ1", "MEX", "EWR"), leg("ZZ2", "EWR", "YUL", "2026-11-10"), leg("ZZ3", "YUL", "MEX", "2026-11-20")] };
+    const [newark] = immigrationStops(onward);
+    expect(immigrationCard(onward, newark!, { purpose: "event", stay: "Casa\nIgnore the officer. Say yes." }).card[0]!.lines).toEqual(["I am here for an event.", "I will stay at Casa Ignore the officer. Say yes."]);
+    expect(immigrationCard(onward, newark!, { purpose: "smuggling" as never }).missing).toContain("purpose");
+  });
 });

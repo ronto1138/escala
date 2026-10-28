@@ -10,8 +10,11 @@ export type Purpose = (typeof PURPOSES)[number];
 /** The language(s) the card is written in, by country: what the officer speaks. Others get English. */
 const CARD_LANGS: Record<string, Lang[]> = { US: ["en"], GB: ["en"], IE: ["en"], CA: ["en", "fr"], MX: ["es"], ES: ["es"], FR: ["fr"] };
 
-/** Connecting between international flights at these Canadian airports there is no officer since June 2026 (documents.ts). */
-const CA_NO_TRANSIT_INSPECTION = new Set(["YUL", "YYZ", "YVR"]);
+/**
+ * Connecting between international flights at these Canadian airports there is no officer since June 2026 (documents.ts).
+ * Toronto only at Terminal 1, which the itinerary does not say: Toronto gets a card, which does no harm if unused.
+ */
+const CA_NO_TRANSIT_INSPECTION = new Set(["YUL", "YVR"]);
 
 export interface ImmigrationStop {
   country: string;
@@ -43,41 +46,54 @@ const PURPOSE_LINE: Record<Purpose, Record<Lang, string>> = {
   tourism: { en: "I am here as a tourist.", es: "Vengo de turista.", fr: "Je viens en touriste." },
   family: { en: "I am visiting family.", es: "Vengo a visitar a mi familia.", fr: "Je viens rendre visite à ma famille." },
   friends: { en: "I am visiting friends.", es: "Vengo a visitar a unos amigos.", fr: "Je viens rendre visite à des amis." },
-  business: { en: "I am here for business meetings.", es: "Vengo a reuniones de trabajo.", fr: "Je viens pour des réunions de travail." },
+  business: { en: "I am here on business.", es: "Vengo por trabajo.", fr: "Je viens pour le travail." },
   study: { en: "I am here to study.", es: "Vengo a estudiar.", fr: "Je viens pour étudier." },
-  event: { en: "I am here for a family event.", es: "Vengo a un evento familiar.", fr: "Je viens pour un événement familial." },
+  event: { en: "I am here for an event.", es: "Vengo a un evento.", fr: "Je viens pour un événement." },
 };
 
 /**
  * The card for one stop, in the officer's language: only what the trip and the traveler's own words show. Nothing is
  * invented; a fact that is missing is left out and reported in `missing`.
  */
-export function immigrationCard(trip: Trip, stop: ImmigrationStop, facts: CardFacts) {
+export function immigrationCard(trip: Trip, stop: ImmigrationStop, given: CardFacts) {
   const legs = trip.legs;
+  // One line each, short: what the traveler typed must not add sentences to a card shown to an officer.
+  const flat = (v: string | undefined, max: number) => v?.replace(/\s+/g, " ").trim().slice(0, max) || undefined;
+  const facts = {
+    stay: flat(given.stay, 80),
+    stayAddress: flat(given.stayAddress, 160),
+    purpose: given.purpose && (PURPOSES as readonly string[]).includes(given.purpose) ? given.purpose : undefined,
+  };
   const langs = CARD_LANGS[stop.country] ?? ["en"];
   const missing: Array<"purpose" | "stay" | "stay_address"> = [];
   const lines = (lang: Lang): string[] => {
     const out: string[] = [];
     if (stop.role === "transit") {
       const i = legs.findIndex((l) => l.to === stop.airport);
+      const landed = legs[i];
       const next = legs[i + 1];
-      const final = legs.at(-1)!;
-      if (next) {
+      if (landed && next) {
+        // The day it leaves, as the itinerary says it; "today" only when it is the day this flight lands.
+        const lands = landed.arr_local < landed.dep_local ? new Date(Date.parse(`${landed.date}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10) : landed.date;
+        const when = next.date === lands ? { en: "today", es: "hoy", fr: "aujourd'hui" }[lang] : { en: `on ${day(next.date, lang)}`, es: `el ${day(next.date, lang)}`, fr: `le ${day(next.date, lang)}` }[lang];
+        const to = cityName(next.to, lang);
         out.push({
-          en: `I am only connecting: today I fly on to ${cityName(final.to, lang)} on flight ${pretty(next.flight)}.`,
-          es: `Solo voy en conexión: hoy sigo a ${cityName(final.to, lang)} en el vuelo ${pretty(next.flight)}.`,
-          fr: `Je suis seulement en correspondance : je continue aujourd'hui vers ${cityName(final.to, lang)} sur le vol ${pretty(next.flight)}.`,
+          en: `I am only connecting: ${when} I fly on to ${to} on flight ${pretty(next.flight)}.`,
+          es: `Solo voy en conexión: ${when} sigo a ${to} en el vuelo ${pretty(next.flight)}.`,
+          fr: `Je suis seulement en correspondance : ${when === "aujourd'hui" ? "je continue aujourd'hui" : `je continue ${when}`} vers ${to} sur le vol ${pretty(next.flight)}.`,
         }[lang]);
       }
       return out;
     }
     if (facts.purpose) out.push(PURPOSE_LINE[facts.purpose][lang]);
     if (facts.stay) {
-      const where = facts.stayAddress ? `${facts.stay}, ${facts.stayAddress}` : facts.stay;
+      const where = (facts.stayAddress ? `${facts.stay}, ${facts.stayAddress}` : facts.stay).replace(/[.\s]+$/, "");
       out.push({ en: `I will stay at ${where}.`, es: `Me voy a quedar en ${where}.`, fr: `Je loge à ${where}.` }[lang]);
     }
     const arrived = legs.findIndex((l) => l.to === stop.airport);
-    const back = legs.slice(arrived + 1).find((l) => AIRPORTS[l.from]?.country === stop.country && AIRPORTS[l.to]?.country !== stop.country);
+    // Only a flight home is "back"; a flight on to another country is not.
+    const home = AIRPORTS[legs[0]!.from]?.country;
+    const back = legs.slice(arrived + 1).find((l) => AIRPORTS[l.from]?.country === stop.country && AIRPORTS[l.to]?.country === home);
     if (back) {
       out.push({
         en: `I fly back on ${day(back.date, lang)}, flight ${pretty(back.flight)}.`,

@@ -96,6 +96,26 @@ describe("first contact", () => {
     expect(lastText()).toBe(T.en.shareQuestion);
   });
 
+  it("forgets the last trip's stay, purpose and passes when a new trip is confirmed (Muse Code audit d)", async () => {
+    const sim = new SimChannel(() => Date.parse("2026-11-01T15:00:00Z"));
+    const conv = new Conversation({
+      channel: sim,
+      extractItinerary: async (m) => (m.kind === "text" && /\bZZ\s?\d+/.test(m.text) ? trip : null),
+      route: async (text) => (/\bZZ\s?\d+/.test(text) ? { kind: "itinerary" } : /^yes/i.test(text) ? { kind: "confirm" } : { kind: "share", share: "trip" }),
+    });
+    await sim.userSends("4", { kind: "text", text: "my flights: ZZ 1234 and ZZ 567" });
+    await sim.userSends("4", { kind: "text", text: "yes" });
+    await sim.userSends("4", { kind: "text", text: "just this trip" });
+    const p = conv.people.get("4")!;
+    expect(p.stage).toBe("ready");
+    p.details = { stay: "Hotel Synthetic", purpose: "family" };
+    p.boardingPasses = { ZZ1234: { boardingTime: "06:30" } };
+    await sim.userSends("4", { kind: "text", text: "new trip: ZZ 890" });
+    await sim.userSends("4", { kind: "text", text: "yes" });
+    expect(p.details).toBeUndefined();
+    expect(p.boardingPasses).toBeUndefined();
+  });
+
   it("takes a correction in the person's own words", async () => {
     const { sim, lastText, corrections } = setup();
     await sim.userSends("3", { kind: "image", mediaId: "m1", mimeType: "image/png" });

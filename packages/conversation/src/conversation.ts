@@ -56,7 +56,7 @@ export interface Person {
   name?: string;
   /** When Escala last called them by name: it does so as rarely as possible. */
   nameUsedAt?: number;
-  /** What they told about the trip around the flights: where they stay, checked bags, a rental car. */
+  /** What they told about the trip around the flights: where they stay, why they travel, checked bags, a rental car. */
   details?: TripDetails;
   /** What their boarding passes say, by flight ("ZZ1234"): boarding time and gate as printed, seat, group. */
   boardingPasses?: Record<string, { boardingTime?: string; gate?: string; seat?: string; group?: string; date?: string }>;
@@ -437,6 +437,11 @@ export class Conversation {
     if (!p.pending) return this.askForTrip(p);
     // A new trip without memory for future trips starts fresh: how they traveled last time is not kept.
     if (p.trip && p.share !== "profile") delete p.style;
+    // What they told about the last trip (stay, purpose, bags, passes) belongs to it: the next card must not repeat it.
+    if (p.trip) {
+      delete p.details;
+      delete p.boardingPasses;
+    }
     p.trip = p.pending.trip;
     delete p.pending;
     p.stage = "ready";
