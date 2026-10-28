@@ -5,7 +5,7 @@ export { readIntent } from "./intent.ts";
 export { routeMessage } from "./route.ts";
 export { acceptCandidates, LEARN_TOPICS, proposeFacts, type Accepted, type Candidate } from "./learner.ts";
 export { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
-export { AIRLINES, AIRPORTS, type Airlines, factsFor, greatCircleKm, journeys, type Leg, type Trip } from "./trip.ts";
+export { AIRLINES, AIRPORTS, type Airlines, cityName, factsFor, greatCircleKm, journeys, type Leg, type Trip } from "./trip.ts";
 export { extractClaims, numbersIn, parseNumber, verify, type Allowed, type Claim, type Verdict } from "./verify.ts";
 export { convertUnits, createRates, parseEcb, RIGHTS_TOPIC, searchTravel, type GuideResult } from "./guide.ts";
 export { CHECKING, createChecking, describeLocation, legInstant, localClock, locationIsFresh, nearestTripAirport, usableCheckingLine, whereNow } from "./whereabouts.ts";

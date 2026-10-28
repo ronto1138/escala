@@ -52,6 +52,8 @@ export interface Person {
   recent?: Turn[];
   /** Where the person said they are, for directions and nearby suggestions. Kept for two hours, never remembered. */
   location?: SharedLocation;
+  /** Their WhatsApp profile name, to call them by it now and then; never used to guess anything else about them. */
+  name?: string;
   /** The country of the passport they fly with (ISO 3166-1 alpha-2), as they said it. Kept like the rest of the trip, or remembered if they turned memory on. */
   passport?: string;
 }
@@ -200,6 +202,7 @@ export class Conversation {
       p.langFromText = text.length > 0;
       p.stage = "onboarding";
       p.lastSeen = at;
+      if (m.profileName) p.name = m.profileName;
       await this.say(p, T[p.lang].hello);
       if (this.mayHoldTrip(m) && (await this.readItinerary(m, p))) return;
       p.awaiting = "share";
@@ -215,6 +218,7 @@ export class Conversation {
       p.langFromText = true;
     }
 
+    if (m.profileName) p.name = m.profileName; // they may change it in WhatsApp
     const returning = p.stage === "stopped" || (p.lastSeen !== undefined && at - p.lastSeen > SESSION_GAP_MS);
     p.lastSeen = at;
     if (p.stage === "stopped") p.stage = p.trip ? "ready" : "onboarding";

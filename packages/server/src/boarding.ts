@@ -10,8 +10,8 @@ export interface BoardingDeps {
   people(): Iterable<Person>;
   send(to: ParticipantId, m: OutboundMessage): Promise<unknown>;
   windowOpen(to: ParticipantId): boolean;
-  /** "Austin" for "AUS"; falls back to the code. */
-  cityOf?(iata: string): string | undefined;
+  /** "Ciudad de México" for "MEX" in Spanish; falls back to the code. */
+  cityOf?(iata: string, lang: Lang): string | undefined;
   log?(event: Record<string, unknown>): void;
 }
 
@@ -84,6 +84,7 @@ const SIMULATED: Record<Lang, string> = { en: "(simulated flight data)", es: "(d
  */
 export function createBoardingReminders(deps: BoardingDeps) {
   const told = new Set<string>();
+  const sending = new Set<string>();
   return async function tick(): Promise<void> {
     const now = deps.feed.now?.() ?? Date.now();
     for (const p of deps.people()) {
@@ -100,20 +101,24 @@ export function createBoardingReminders(deps: BoardingDeps) {
         const before = legs[i - 1];
         const lands = before ? Date.parse(before.arrival.actual ?? before.arrival.estimated ?? before.arrival.scheduled ?? "") : NaN;
         if (Number.isFinite(lands) && lands > now) continue; // still in the air on the flight before
-        told.add(key);
-        if (told.size > 50_000) told.delete(told.values().next().value!);
-        const city = (s.origin.iata && deps.cityOf?.(s.origin.iata)) || s.origin.iata || "";
+        if (sending.has(key)) continue;
+        const city = (s.origin.iata && deps.cityOf?.(s.origin.iata, p.lang)) || s.origin.iata || "";
         const body = boardingText(s, p.lang, city);
         const flight = pretty(norm(s.ident));
         const open = deps.windowOpen(p.id);
         const m: OutboundMessage = open
           ? { kind: "text", text: `${OPEN[p.lang](flight, body)}${s.source === "replay" ? ` ${SIMULATED[p.lang]}` : ""}` }
           : { kind: "template", name: TEMPLATE, language: TEMPLATE_LANG[p.lang], bodyParams: [flight, body] };
+        sending.add(key);
         try {
           await deps.send(p.id, m);
+          told.add(key); // only once it went out: a failed send is tried again on the next tick
+          if (told.size > 50_000) told.delete(told.values().next().value!);
           deps.log?.({ event: "boarding_reminder", via: open ? "text" : "template", published: Boolean(ruleFor(s)) });
         } catch (err) {
           deps.log?.({ event: "boarding_reminder_failed", error: String(err).slice(0, 160) });
+        } finally {
+          sending.delete(key);
         }
       }
     }

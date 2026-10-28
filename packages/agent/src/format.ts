@@ -1,5 +1,6 @@
 import type { Lang } from "@escala/conversation";
-import { AIRPORTS, type Leg } from "./trip.ts";
+import { mapsLink } from "./guide.ts";
+import { AIRPORTS, cityName, type Leg } from "./trip.ts";
 
 const LOCALE: Record<Lang, string> = { en: "en-US", es: "es-MX", fr: "fr-CA" };
 
@@ -18,7 +19,7 @@ export function timeLabel(hhmm: string, lang: Lang): string {
 }
 
 export function legLine(l: Leg, lang: Lang): string {
-  const city = (iata: string) => AIRPORTS[iata]?.city ?? iata;
+  const city = (iata: string) => cityName(iata, lang);
   const flight = l.flight.replace(/^([A-Z0-9]{2})(\d)/, "$1 $2");
   const at = (hhmm: string) => (hhmm ? ` ${timeLabel(hhmm, lang)}` : ""); // a time the itinerary did not give is left out
   return `${flight} · ${dayLabel(l.date, lang)} · ${city(l.from)}${at(l.dep_local)} → ${city(l.to)}${at(l.arr_local)}`;
@@ -30,6 +31,9 @@ export function legLine(l: Leg, lang: Lang): string {
  */
 export function forWhatsApp(text: string): string {
   return text
+    // A link the model wrote by hand instead of calling maps_link ("[O'Hare T5](maps_link:Terminal 5 O'Hare)") still opens the map.
+    .replace(/\[([^\]\n]{1,300})\]\(maps_link:\s*([^)\n]{1,200})\)/g, (_, label: string, place: string) => `${label}: ${mapsLink({ destination: place.trim(), directions: false })}`)
+    .replace(/\(?maps_link:\s*([^)\n]{1,200})\)?/g, (_, place: string) => mapsLink({ destination: place.trim(), directions: false }))
     .replace(/\[([^\]\n]{1,300})\]\((https?:\/\/[^)\s]+)\)/g, (_, label: string, url: string) => (label.trim() === url || /^https?:/.test(label.trim()) ? url : `${label}: ${url}`))
     .replace(/\*\*([^*\n]+)\*\*/g, "*$1*")
     .replace(/^#{1,6}\s+/gm, "")

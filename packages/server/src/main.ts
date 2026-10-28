@@ -5,7 +5,7 @@ import { mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AIRPORTS, createEscalaAgent, createRates, legLine, longestDeadlineDays, readIntent, routeMessage, type TraceStep } from "@escala/agent";
+import { AIRPORTS, cityName, createEscalaAgent, createRates, legLine, longestDeadlineDays, readIntent, routeMessage, type TraceStep } from "@escala/agent";
 import type { InboundMessage } from "@escala/channel";
 import { Conversation, keywordIntent, type Person } from "@escala/conversation";
 import { loadScenario, ReplayClock, scenarioLegs } from "@escala/feeds";
@@ -240,7 +240,7 @@ const boarding = createBoardingReminders({
   people: () => conversation.people.values(),
   send: (to, m) => channel.send(to, m),
   windowOpen: (to) => channel.windowOpen(to),
-  cityOf: (code) => AIRPORTS[code]?.city,
+  cityOf: (code, lang) => cityName(code, lang),
   log,
 });
 setInterval(() => void boarding().catch((err) => log({ event: "error", why: "boarding", error: String(err).slice(0, 120) })), 15_000).unref();

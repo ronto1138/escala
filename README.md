@@ -1,8 +1,8 @@
 # Escala
 
 **A companion for your whole trip, on WhatsApp, and only for your trip.** Send your plans once, any way you
-have them: flights, stays, trains, bookings. Escala keeps track of all of it, tells you and the people you
-choose when something changes, answers anything about your trip in English, Spanish or French, and learns
+have them: flights, stays, trains, bookings. Escala keeps track of all of it, tells you when something changes
+(with a message ready to forward to the people you choose), answers anything about your trip in English, Spanish or French, and learns
 how you like to travel, if you let it. When an answer involves rules or money, it comes with the source, and
 when Escala does not know, it says so.
 

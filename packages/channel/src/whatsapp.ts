@@ -151,11 +151,17 @@ export function fromWebhook(payload: any): InboundMessage[] {
   const list = (x: unknown): any[] => (Array.isArray(x) ? x : []); // a signed but odd payload must not throw
   for (const entry of list(payload?.entry)) {
     for (const change of list(entry?.changes)) {
+      const names = new Map<string, string>();
+      for (const c of list(change?.value?.contacts)) {
+        const name = typeof c?.profile?.name === "string" ? c.profile.name.replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, 40) : "";
+        if (typeof c?.wa_id === "string" && name) names.set(c.wa_id, name);
+      }
       for (const m of list(change?.value?.messages)) {
         // Skip anything malformed instead of crashing the whole batch.
         const ts = Number(m?.timestamp);
         if (typeof m?.id !== "string" || typeof m?.from !== "string" || !/^\d{6,15}$/.test(m.from) || !Number.isFinite(ts)) continue;
-        const base = { id: m.id, from: m.from, at: new Date(ts * 1000).toISOString() };
+        const profileName = names.get(m.from);
+        const base = { id: m.id, from: m.from, at: new Date(ts * 1000).toISOString(), ...(profileName ? { profileName } : {}) };
         switch (m.type) {
           case "text":
             out.push({ ...base, kind: "text", text: String(m.text?.body ?? "") });

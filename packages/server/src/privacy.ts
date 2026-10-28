@@ -30,6 +30,8 @@ policy will be updated.</p>
 <ul>
   <li>Your WhatsApp number and the messages you send Escala: text, and the photos, documents or voice notes you choose to share.</li>
   <li>Your itinerary, and what you ask Escala to remember.</li>
+  <li>The name in your WhatsApp profile, as WhatsApp sends it, to call you by it now and then. Escala never guesses anything
+  else about you from it.</li>
   <li>Flight status for the flights on your itinerary.</li>
 </ul>
 <p>Escala does not ask for, and you should not send, payment cards, passwords or identity documents beyond a booking confirmation.</p>
@@ -47,12 +49,14 @@ policy will be updated.</p>
   Escala's code decides what is kept. If Meta's own service does not answer, the same model on Baseten answers your message instead.
   Baseten states that it keeps no copy of these requests and does not train on them.</li>
   <li><strong>Railway</strong> hosts the Escala server.</li>
+  <li><strong>Google Maps</strong>: map links Escala sends name the place, and if you shared your location, its coordinates as
+  the starting point. Opening a link sends that to Google under its own terms; Escala does not call Google itself.</li>
 </ul>
 <p>Escala does not sell your data and does not use it for advertising.</p>
 
 <h2>Test phase: the team reads the conversations</h2>
-<p>Escala is in a test phase. It answers only numbers the Kokorio team has enrolled by hand, and each tester is told
-this before being enrolled: <strong>the team reads the full conversations</strong> (what you write, what Escala answers,
+<p>Escala is in a test phase. It answers only numbers the Kokorio team has enrolled, by hand or with an invitation code
+(a QR) the team hands out, and each tester is told this before or when joining: <strong>the team reads the full conversations</strong> (what you write, what Escala answers,
 and what a voice note was heard as) to find mistakes and improve Escala. Use made-up details only.</p>
 <ul>
   <li>Each message is sealed with a public key before it is written to the server's log. The private key is not on the

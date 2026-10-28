@@ -1,7 +1,13 @@
 /** A person's WhatsApp id (digits only, as WhatsApp sends it in `wa_id`). */
 export type ParticipantId = string;
 
-export type InboundMessage = { id: string; from: ParticipantId; at: string } & (
+export type InboundMessage = {
+  id: string;
+  from: ParticipantId;
+  at: string;
+  /** The name the person set in their WhatsApp profile, when WhatsApp sends it (may be a nickname). */
+  profileName?: string;
+} & (
   | { kind: "text"; text: string }
   | { kind: "image" | "audio" | "video" | "document"; mediaId: string; mimeType: string; caption?: string; voice?: boolean }
   | { kind: "location"; latitude: number; longitude: number; name?: string }

@@ -41,7 +41,7 @@ describe("dates are written by code in the person's language", () => {
     expect(dayLabel("2026-11-02", "es")).toBe("lun 2 de nov");
     expect(dayLabel("2026-11-02", "en")).toBe("Mon Nov 2");
     expect(dayLabel("2026-11-02", "fr")).toBe("lun 2 nov");
-    expect(legLine(demo.legs[1]!, "fr")).toBe("ZZ 567 · lun 2 nov · Chicago O'Hare 10 h 30 → Montreal 13 h 40");
+    expect(legLine(demo.legs[1]!, "fr")).toBe("ZZ 567 · lun 2 nov · Chicago O'Hare 10 h 30 → Montréal 13 h 40");
   });
 });
 

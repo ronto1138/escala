@@ -8,7 +8,7 @@ import { forWhatsApp, legLine } from "./format.ts";
 import { evidenceReply, readEvidence, type EvidenceObject } from "./evidence.ts";
 import { convertUnits, mapsLink, RIGHTS_TOPIC, searchTravel, UNIT_NAMES, type createRates } from "./guide.ts";
 import { crossesBorder, documentsFor, passportFromStatement } from "./documents.ts";
-import { createChecking, describeLocation, localClock, locationIsFresh, usableCheckingLine, whereNow } from "./whereabouts.ts";
+import { createChecking, describeLocation, legInstant, localClock, locationIsFresh, usableCheckingLine, whereNow } from "./whereabouts.ts";
 import { acceptCandidates, proposeFacts } from "./learner.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
 import { factsFor, journeys, norm, type Airlines, type Trip } from "./trip.ts";
@@ -466,6 +466,10 @@ export function createEscalaAgent(
     const instructions =
       `You are Escala, a warm, plain-spoken travel companion on WhatsApp, for this traveler's trip only. Reply in ${LANG_NAME[p.lang]}, briefly, like a person who knows travel. ` +
       "Answer only the traveler's latest message: earlier turns are context and were already answered, never repeat them unless asked. " +
+      "You don't know the traveler's gender: in Spanish and French never use a gendered word about them (tranquila, atento, bienvenido, prêt, arrivée, @ or o/a forms); rephrase neutrally (\"que tengas buen vuelo\", \"ya en Montreal\", \"bon vol\"). Don't use gendered words about yourself either. " +
+      (p.name ? `Their WhatsApp profile name is "${p.name.replace(/"/g, "")}" (it may be a nickname): use their first name now and then, not in every message, and never infer anything else from it. ` : "") +
+      "Write status words for people, never internal labels: say \"confirmed on <page> on Oct 28\" or \"I could not confirm this\", never VERIFICADO, NO_VERIFICADO, brackets or codes. Give times as local clock times, never UTC. " +
+      "Never promise to check something later or to follow up on your own: either answer now with what you have, or say what you could not confirm. " +
       "Use tools for facts; never guess flight status. Never state an amount, percentage, deadline or legal article unless rights_for_trip returned it under 'applies'. " +
       "If a right only 'may apply', say what it depends on and ask the single question returned, nothing else. If the inbound aircraft is late, say it is your inference, not airline data; when the airline has not changed its times yet, lead with the likely delay and say the airline has not announced it yet, and never call that flight on time. " +
       "When a connection crosses a border (immigration, customs, checking bags again, another terminal), never say it is enough or not enough time: say what has to happen in between and that you don't have the airport's official minimum connection time; if it looks short, say it looks tight. " +
@@ -842,7 +846,12 @@ function cite(e: RightEntry, lang: Lang, amount?: Record<string, number>) {
 }
 
 /** Minutes on the ground between two legs, computed from the itinerary (local times; same airport). */
-function layoverMin(a: { date: string; arr_local: string }, b: { date: string; dep_local: string }): number {
+/** Minutes on the ground between two legs at the same airport; an overnight first leg lands the next day. */
+function layoverMin(a: Trip["legs"][number], b: Trip["legs"][number]): number {
+  let landed = legInstant(a.date, a.arr_local, a.to);
+  if (landed < legInstant(a.date, a.dep_local, a.from)) landed += 24 * 60 * 60 * 1000;
+  const leaves = legInstant(b.date, b.dep_local, b.from);
+  if (Number.isFinite(landed) && Number.isFinite(leaves)) return Math.round((leaves - landed) / 60000);
   return Math.round((Date.parse(`${b.date}T${b.dep_local}:00Z`) - Date.parse(`${a.date}T${a.arr_local}:00Z`)) / 60000);
 }
 
