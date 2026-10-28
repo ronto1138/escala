@@ -32,3 +32,29 @@ describe("documents by passport", () => {
     expect(passportFromStatement("likes aisle seats")).toBeNull();
   });
 });
+
+describe("the official table", () => {
+  it("tells a Mexican passport connecting in the US what both countries ask", () => {
+    const [us, ca] = documentsFor("MX", trip);
+    expect(us!.rules.map((r) => r.url)).toEqual([
+      expect.stringContaining("ecfr.gov"), expect.stringContaining("dhs.gov"), expect.stringContaining("cbp.gov"),
+    ]);
+    expect(us!.rules.find((r) => r.url.includes("cbp.gov"))!.status).toBe("NO_VERIFICADO");
+    expect(ca).toMatchObject({ covered: true, rules: [expect.objectContaining({ requirement: expect.stringContaining("US non-immigrant visa") })] });
+  });
+
+  it("a rule for everyone does not make a passport covered", () => {
+    const [us] = documentsFor("JP", trip);
+    expect(us).toMatchObject({ covered: false, official_page: expect.stringContaining("travel.state.gov") });
+    expect(us!.rules.length).toBeGreaterThan(0); // still: no airside transit
+  });
+
+  it("every rule has an official page, a quote and the day it was read", async () => {
+    const { DOC_RULES } = await import("../src/documents.ts");
+    for (const r of DOC_RULES) {
+      expect(r.url).toMatch(/^https:\/\//);
+      expect(r.quote.length).toBeGreaterThan(10);
+      expect(r.checked_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+});

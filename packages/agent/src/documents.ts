@@ -8,9 +8,9 @@ import { legInstant } from "./whereabouts.ts";
  */
 export interface DocRule {
   id: string;
-  /** Passport country (ISO 3166-1 alpha-2), or "EU" for any EU passport. */
+  /** Passport countries (ISO 3166-1 alpha-2, space-separated); "EU" any EU passport, "NON_EU" any other, "*" any. */
   passport: string;
-  /** Country where it applies (ISO 3166-1 alpha-2). */
+  /** Countries where it applies (ISO 3166-1 alpha-2, space-separated). */
   country: string;
   role: "entry" | "transit" | "both";
   requirement: string;
@@ -23,7 +23,34 @@ export interface DocRule {
   in_force_from?: string;
 }
 
-export const DOC_RULES: DocRule[] = [];
+export const DOC_RULES: DocRule[] = [
+  // United States
+  { id: "us-vwp", passport: "FR ES GB", country: "US", role: "both", requirement: "No visa needed: an approved ESTA (Visa Waiver Program) before flying, also just to connect; stays up to 90 days; an e-Passport is required. ESTA can be requested any time before travel.", conditions: "UK: British citizens with unrestricted right of abode.", url: "https://www.dhs.gov/visa-waiver-program", quote: "You must have an e-Passport to use the VWP", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "us-visa", passport: "MX AR BR CO", country: "US", role: "both", requirement: "A US visitor visa (B-1/B-2) is required to fly into the US, and also just to connect there: the country is not in the Visa Waiver Program.", conditions: "Mexican citizens: the Border Crossing Card is itself a B-1/B-2 visa; the waiver without a visa applies only at land ports or by ferry, not by air.", url: "https://www.ecfr.gov/current/title-8/chapter-I/subchapter-B/part-212/section-212.1", quote: "Form DSP-150, B-1/B-2 Visa and Border Crossing Card", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "us-ca", passport: "CA", country: "US", role: "both", requirement: "No visa: a Canadian passport (or a NEXUS card at kiosks) by air, also just to transit.", conditions: "Stays over 30 days must be registered with the US government.", url: "https://travel.gc.ca/destinations/united-states", quote: "travelling by air to or even just transiting through the United States", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "us-no-airside-transit", passport: "*", country: "US", role: "transit", requirement: "There is no airside transit in the US: at the first US airport you go through immigration and customs, and you need whatever you would need to enter (visa or ESTA). Transit Without Visa is suspended.", url: "https://www.dhs.gov/travel-overseas", quote: "CBP processing that must be completed at your first port of entry", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "us-bag-recheck", passport: "*", country: "US", role: "transit", requirement: "Checked bags are normally collected and checked in again after US customs at the connection; CBP only skips that on its remote baggage screening pilot routes.", url: "https://www.cbp.gov/newsroom/national-media-release", quote: "without the need to re-check their bags", checked_on: "2026-10-28", status: "NO_VERIFICADO" },
+  // Canada
+  { id: "ca-eta", passport: "FR ES GB EU", country: "CA", role: "both", requirement: "An eTA (CA$7, valid up to 5 years or until the passport expires) to fly into Canada or connect at a Canadian airport.", conditions: "Romania: only e-passport holders.", url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/visit-canada/entry-requirements-country.html", quote: "an eTA and a valid passport to board your flight to Canada", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "ca-us", passport: "US", country: "CA", role: "both", requirement: "No visa and no eTA; a passport is recommended.", url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/visit-canada/transit.html", quote: "US citizens and lawful permanent residents of the U.S. can transit through Canada without a visa", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "ca-eta-conditional", passport: "MX AR BR", country: "CA", role: "both", requirement: "By air, an eTA only if you held a Canadian visitor visa in the past 10 years or hold a valid US non-immigrant visa when you apply; otherwise a Canadian visitor visa (CA$100 plus CA$85 for biometrics). Connecting at a Canadian airport counts too.", conditions: "A previous eTA is not the same as a previous Canadian visa. Temporary stay, normally up to 6 months.", url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/visit-canada/eta/eligibility/eta-x.html", quote: "Having held an eTA in the past 10 years is not the same as having held a Canadian visitor visa", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "ca-co", passport: "CO", country: "CA", role: "both", requirement: "A Canadian visitor visa to enter by any means; a transit visa to connect if the transit is 48 hours or less.", url: "https://www.canada.ca/en/immigration-refugees-citizenship/services/visit-canada/transit.html", quote: "You need a transit visa if you're from a visa-required country", checked_on: "2026-10-28", status: "VERIFICADO" },
+  // Mexico
+  { id: "mx-ca", passport: "CA", country: "MX", role: "entry", requirement: "No tourist visa for stays up to 180 days (the officer sets the days); passport valid for the whole stay; digital immigration form (FMMd) on arrival by air.", url: "https://travel.gc.ca/destinations/mexico", quote: "Tourist visa: not required for stays of up to 180 days", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "mx-gb", passport: "GB", country: "MX", role: "entry", requirement: "No visa as a tourist; passport valid for the stay; the entry stamp sets the days.", url: "https://www.gov.uk/foreign-travel-advice/mexico/entry-requirements", quote: "If you're visiting Mexico as a tourist, you do not need a visa", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "mx-fr", passport: "FR", country: "MX", role: "entry", requirement: "No short-stay visa, up to 180 days; keep the entry stamp, e-gate ticket or digital FMM.", url: "https://www.diplomatie.gouv.fr/fr/conseils-aux-voyageurs/conseils-par-pays-destination/mexique/", quote: "ne sont pas soumis à l'obligation de visa de court séjour", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "mx-es", passport: "ES", country: "MX", role: "entry", requirement: "No visa for tourism; 1 to 180 days set at entry; passport valid for the whole stay. Be ready to show the purpose of the trip.", conditions: "Spanish-Mexican dual nationals enter and leave Mexico with the Mexican passport.", url: "https://www.exteriores.gob.es/es/ServiciosAlCiudadano/Paginas/Detalle-recomendaciones-de-viaje.aspx?trc=mexico", quote: "No se requiere visado para entrar en México siempre y cuando el objeto del viaje sea", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "mx-br", passport: "BR", country: "MX", role: "both", requirement: "A Mexican visa: an electronic visa for arrivals by air under 180 days, one per entry, including a connection to a third country.", url: "https://visaelectronica.sre.gob.mx", quote: "Brazilian nationals transiting to a third country must have a valid electronic visa for each entry into Mexico", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "mx-fmmd", passport: "*", country: "MX", role: "entry", requirement: "The digital immigration form (FMMd) for arrivals by air is downloaded once, after entering, from the INM site; it is not needed before the flight.", url: "https://www.gob.mx/inm/articulos/forma-migratoria-multiple-digital-fmmd", quote: "podrá descargar su FMMd después de su ingreso al país", checked_on: "2026-10-28", status: "VERIFICADO" },
+  // Spain and the Schengen area
+  { id: "es-mx", passport: "MX", country: "ES", role: "entry", requirement: "No Schengen visa for a short stay.", url: "https://www.exteriores.gob.es/Consulados/mexico/es/ServiciosConsulares/Paginas/Consular/TasasVisados.aspx", quote: "no aplicable consecuentemente a ciudadanos mexicanos", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "es-us", passport: "US", country: "ES", role: "entry", requirement: "No visa, up to 90 days in any 180; passport valid at least 3 months after leaving the Schengen area and issued within the last 10 years.", url: "https://www.exteriores.gob.es/Consulados/washington/en/ServiciosConsulares/Paginas/Consular/Condiciones-de-entrada-en-Espana.aspx", quote: "valid until at least three months after the planned date of departure from the Schengen territory", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "es-gb", passport: "GB", country: "ES", role: "entry", requirement: "No visa, up to 90 days in any 180.", url: "https://www.gov.uk/foreign-travel-advice/spain/entry-requirements", quote: "up to 90 days in any 180-day period", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "es-co", passport: "CO", country: "ES", role: "entry", requirement: "No visa, up to 90 days in any 180; passport valid 3 months after leaving.", url: "https://www.exteriores.gob.es/Consulados/bogota/es/ServiciosConsulares/Paginas/Consular/Visados.aspx", quote: "no necesitan visado para entrar y permanecer en España", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "es-ar", passport: "AR", country: "ES", role: "entry", requirement: "No visa for stays under 90 days, unless the trip is for temporary work.", url: "https://www.exteriores.gob.es/Consulados/buenosaires/es/ServiciosConsulares/Paginas/index.aspx", quote: "los argentinos no necesitan en general visado", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "schengen-ees", passport: "NON_EU", country: "ES FR", role: "entry", requirement: "At the first entry, the Entry/Exit System (EES) records fingerprints and a photo at the border; fully operational since April 10, 2026.", url: "https://home-affairs.ec.europa.eu/policies/schengen/smart-borders_en", quote: "became fully operational on 10 April 2026", checked_on: "2026-10-28", status: "VERIFICADO" },
+  { id: "schengen-etias", passport: "NON_EU", country: "ES FR", role: "entry", requirement: "ETIAS, the future travel authorization, is not in operation yet and takes no applications; the EU plans it for the last quarter of 2026, date to be announced.", url: "https://home-affairs.ec.europa.eu/policies/schengen/smart-borders_en", quote: "currently not in operation and no applications for travel authorisations are collected at this point", checked_on: "2026-10-28", status: "VERIFICADO" },
+];
 
 const EU = new Set(["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]);
 
@@ -32,6 +59,8 @@ export const OFFICIAL_PAGES: Record<string, string> = {
   US: "https://travel.state.gov/content/travel/en/us-visas.html",
   CA: "https://www.canada.ca/en/immigration-refugees-citizenship/services/visit-canada.html",
   MX: "https://www.gob.mx/inm",
+  ES: "https://www.exteriores.gob.es/es/ServiciosAlCiudadano/Paginas/Recomendaciones-de-viaje.aspx",
+  FR: "https://france-visas.gouv.fr",
 };
 
 /** A trip crosses borders when any flight lands in a country other than where the trip starts. */
@@ -62,17 +91,19 @@ export function documentsFor(passport: string, trip: Trip | undefined, rules: Do
   const pp = passport.toUpperCase();
   return tripCountries(trip).touched.map(({ country, role, airport }) => {
     if (country === pp) return { country, role, airport, own_country: true, rules: [], covered: true };
-    const found = rules.filter(
-      (r) => r.country === country && (r.passport === pp || (r.passport === "EU" && EU.has(pp))) && (r.role === role || r.role === "both"),
-    );
+    const holds = (r: DocRule) =>
+      r.passport.split(" ").some((x) => x === pp || x === "*" || (x === "EU" && EU.has(pp)) || (x === "NON_EU" && !EU.has(pp)));
+    const found = rules.filter((r) => r.country.split(" ").includes(country) && holds(r) && (r.role === role || r.role === "both"));
+    // A rule for everyone (the US has no airside transit) does not mean this passport is covered.
+    const specific = found.some((r) => !/^(\*|NON_EU)$/.test(r.passport));
     return {
       country,
       role,
       airport,
       own_country: false,
-      covered: found.length > 0,
+      covered: specific,
       rules: found.map(({ requirement, conditions, url, quote, checked_on, status, in_force_from }) => ({ requirement, conditions, url, quote, checked_on, status, in_force_from })),
-      official_page: found.length ? undefined : OFFICIAL_PAGES[country],
+      official_page: specific ? undefined : OFFICIAL_PAGES[country],
     };
   });
 }
