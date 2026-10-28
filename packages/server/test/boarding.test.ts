@@ -24,7 +24,7 @@ describe("heading to the gate", () => {
     expect(es).toContain("sale a las 14:50 (hora de Austin) por la puerta 17");
     expect(es).toContain("regla de ejemplo de la aerolínea del demo, el abordaje empieza hacia las 14:10 y la puerta cierra a las 14:35");
     expect(boardingText({ ...first, operator: "DL" }, "en", "Austin")).toMatch(/Per Delta \(https:\/\/www\.delta\.com.*\), be at the gate by 14:35/);
-    expect(boardingText({ ...first, operator: "UA" }, "en", "Austin")).toMatch(/doesn't publish when it boards/);
+    expect(boardingText({ ...first, operator: "UA" }, "en", "Austin")).toMatch(/doesn.t publish its boarding time; airlines usually start 30 to 50 min .* between 14:00 and 14:20/);
   });
 
   it("is sent once, and never while the traveler is still flying the leg before", async () => {

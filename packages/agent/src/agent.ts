@@ -1,6 +1,6 @@
 import type { InboundMessage, OutboundMessage } from "@escala/channel";
 import type { ConversationDeps, ExtractedTrip, Lang, Person } from "@escala/conversation";
-import { arrivalMinutesLate, inboundChain, inboundInference, ruleFor, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
+import { arrivalMinutesLate, inboundChain, inboundInference, ruleFor, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
 import { outputText, type MetaClient, type OpenModelClient } from "@escala/meta-client";
 import { ConsentError, tripRetention, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
@@ -614,6 +614,9 @@ export function createEscalaAgent(
       const lateMin = arrivalMinutesLate(snap);
       const inboundMin = inference?.likelyDepartureDelayMinutes ?? 0;
       for (const n of [lateMin, inboundMin, inference?.minTurnMinutes]) if (n) allowed.durations.push(n, Math.round((n / 60) * 10) / 10);
+      // Boarding minutes the airline publishes, or the typical range when it publishes none.
+      const br = ruleFor(snap);
+      for (const n of br ? [br.startsMin, br.gateByMin, br.closesMin] : [TYPICAL_BOARDING.fromMin, TYPICAL_BOARDING.toMin]) if (n) allowed.durations.push(n);
       const dz = snap.origin.timezone ?? "UTC";
       const az = snap.destination.timezone ?? "UTC";
       return {
@@ -797,7 +800,17 @@ export function createEscalaAgent(
 function boardingFor(snap: FlightSnapshot, tz: string) {
   const r = ruleFor(snap);
   const dep = Date.parse(snap.departure.estimated ?? snap.departure.scheduled ?? "");
-  if (!r || !Number.isFinite(dep)) return { published: false, note: "the airline does not publish its boarding times: the boarding pass shows them" };
+  if (!Number.isFinite(dep)) return null;
+  if (!r) {
+    const { fromMin, toMin, sources, checkedOn } = TYPICAL_BOARDING;
+    return {
+      published: false,
+      note: `this airline does not publish its boarding time; airlines usually start ${fromMin} to ${toMin} min before departure (the range American and United publish). Say it is a typical range, not this airline's rule, and that the boarding pass has the exact time`,
+      typical_boarding_window: { from: local(new Date(dep - toMin * 60_000).toISOString(), tz), to: local(new Date(dep - fromMin * 60_000).toISOString(), tz) },
+      sources,
+      checked_on: checkedOn,
+    };
+  }
   const at = (min?: number) => (min ? local(new Date(dep - min * 60_000).toISOString(), tz) : null);
   return {
     published: true,

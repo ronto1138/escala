@@ -30,7 +30,18 @@ export const BOARDING: Record<string, BoardingRule> = {
   ZZ: { airline: "ZZ", startsMin: 40, closesMin: 15, url: "", checkedOn: "", example: true },
 };
 
-/** Without any published rule, the reminder comes this long before departure. */
+/**
+ * When the airline publishes nothing: the range two large airlines publish for "most flights" (read 2026-10-28). It is
+ * a typical range, not this airline's rule, and is said as such. United's page was read from the search index.
+ */
+export const TYPICAL_BOARDING = {
+  fromMin: 30,
+  toMin: 50,
+  sources: ["https://www.aa.com/i18n/travel-info/boarding-process.jsp", "https://www.united.com/en/us/fly/travel/airport/boarding-process.html"],
+  checkedOn: "2026-10-28",
+};
+
+/** Without any published rule, the reminder comes ahead of the early end of the typical range. */
 const DEFAULT_LEAD_MIN = 60;
 /** Margin before the earliest published moment (boarding starts, or be at the gate), to walk there. */
 const WALK_MARGIN_MIN = 15;
@@ -58,7 +69,7 @@ export function remindAt(s: FlightSnapshot): number | null {
   const dep = Date.parse(s.departure.estimated ?? s.departure.scheduled ?? "");
   if (!Number.isFinite(dep)) return null;
   const r = ruleFor(s);
-  const earliest = Math.max(r?.startsMin ?? 0, r?.gateByMin ?? 0);
+  const earliest = r ? Math.max(r.startsMin ?? 0, r.gateByMin ?? 0) : TYPICAL_BOARDING.toMin;
   return dep - Math.max(DEFAULT_LEAD_MIN, earliest + WALK_MARGIN_MIN) * 60_000;
 }
 

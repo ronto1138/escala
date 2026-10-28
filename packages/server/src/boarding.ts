@@ -1,6 +1,6 @@
 import type { OutboundMessage, ParticipantId } from "@escala/channel";
 import type { Lang, Person } from "@escala/conversation";
-import { ruleFor, remindAt, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
+import { ruleFor, remindAt, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
 import { TEMPLATE, TEMPLATE_LANG } from "./notifier.ts";
 
 export { BOARDING, remindAt, ruleFor, type BoardingRule } from "@escala/feeds";
@@ -59,9 +59,10 @@ export function boardingText(s: FlightSnapshot, lang: Lang, city: string): strin
     parts.es.push(`${r.rule.example ? "Según la regla de ejemplo de la aerolínea del demo" : `Según ${r.rule.airline} (${r.rule.url}, consultado el ${day})`}, ${said.es.join(" y ")}`);
     parts.fr.push(`${r.rule.example ? "Selon la règle d'exemple de la compagnie de démo" : `Selon ${r.rule.airline} (${r.rule.url}, consulté le ${day})`}, ${said.fr.join(" et ")}`);
   } else {
-    parts.en.push("The airline doesn't publish when it boards: check the time on your boarding pass");
-    parts.es.push("La aerolínea no publica a qué hora aborda: revisa la hora en tu pase de abordar");
-    parts.fr.push("La compagnie ne publie pas l'heure d'embarquement : vérifiez-la sur votre carte d'embarquement");
+    const { fromMin: a, toMin: b } = TYPICAL_BOARDING;
+    parts.en.push(`This airline doesn't publish its boarding time; airlines usually start ${a} to ${b} min before departure (the range American and United publish), so between ${at(b)} and ${at(a)}. Your boarding pass has the exact time`);
+    parts.es.push(`Esta aerolínea no publica su hora de abordaje; las aerolíneas suelen empezar entre ${a} y ${b} min antes de la salida (el rango que publican American y United), o sea entre las ${at(b)} y las ${at(a)}. La hora exacta está en tu pase de abordar`);
+    parts.fr.push(`Cette compagnie ne publie pas son heure d'embarquement ; les compagnies commencent en général ${a} à ${b} min avant le départ (la fourchette que publient American et United), soit entre ${at(b)} et ${at(a)}. L'heure exacte est sur votre carte d'embarquement`);
   }
   return parts[lang].join(". ");
 }
