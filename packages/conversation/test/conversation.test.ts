@@ -401,3 +401,37 @@ describe("someone who switches language", () => {
     expect(clearLang("ok gracias")).toBeNull();
   });
 });
+
+describe("a trip that crosses borders", () => {
+  function borderSetup(remembered?: string) {
+    const sim = new SimChannel(() => Date.parse("2026-11-06T16:00:00Z"));
+    const conv = new Conversation({
+      channel: sim,
+      extractItinerary: async () => null,
+      demoTrip: () => ({ lines: ["ZZ 1234 · demo"], trip: { legs: 2 } }),
+      crossesBorder: () => true,
+      rememberedPassport: () => remembered,
+      briefDocuments: async (p) => [{ kind: "text", text: `documents for ${p.passport}` }],
+    });
+    const out = () => sim.transcript.filter((e) => e.direction === "out").map((e) => e.message as OutboundMessage);
+    return { sim, out };
+  }
+
+  it("asks which passport they fly with once the trip is confirmed", async () => {
+    const { sim, out } = borderSetup();
+    await sim.userSends("15550006001", { kind: "text", text: "hi" });
+    await sim.userSends("15550006001", { kind: "text", text: "just this trip" });
+    await sim.userSends("15550006001", { kind: "interactive", replyId: "demo_trip", title: "Try a demo trip" });
+    await sim.userSends("15550006001", { kind: "text", text: "yes" });
+    expect(out().slice(-2)).toEqual([{ kind: "text", text: T.en.confirmed }, { kind: "text", text: T.en.passportQuestion }]);
+  });
+
+  it("tells the documents straight away when the passport is remembered", async () => {
+    const { sim, out } = borderSetup("MX");
+    await sim.userSends("15550006002", { kind: "text", text: "hi" });
+    await sim.userSends("15550006002", { kind: "text", text: "just this trip" });
+    await sim.userSends("15550006002", { kind: "interactive", replyId: "demo_trip", title: "Try a demo trip" });
+    await sim.userSends("15550006002", { kind: "text", text: "yes" });
+    expect(out().at(-1)).toEqual({ kind: "text", text: "documents for MX" });
+  });
+});

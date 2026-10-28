@@ -91,6 +91,9 @@ const conversation = new Conversation({
   route: (text, p) => routeMessage(client, text, p),
   extractItinerary: escala.extractItinerary,
   agent: escala.agent!,
+  crossesBorder: escala.crossesBorder!,
+  rememberedPassport: escala.rememberedPassport!,
+  briefDocuments: escala.briefDocuments!,
   // Short answers to Escala's questions: keywords first, Muse Spark when they are not enough.
   understand: async (text, p) => {
     const k = keywordIntent(text, p.lang);

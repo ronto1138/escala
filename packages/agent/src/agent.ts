@@ -7,6 +7,7 @@ import { assess, type RightEntry, type TripFacts } from "@escala/rights";
 import { forWhatsApp, legLine } from "./format.ts";
 import { evidenceReply, readEvidence, type EvidenceObject } from "./evidence.ts";
 import { convertUnits, mapsLink, RIGHTS_TOPIC, searchTravel, UNIT_NAMES, type createRates } from "./guide.ts";
+import { crossesBorder, documentsFor, passportFromStatement } from "./documents.ts";
 import { createChecking, describeLocation, localClock, locationIsFresh, usableCheckingLine, whereNow } from "./whereabouts.ts";
 import { acceptCandidates, proposeFacts } from "./learner.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
@@ -38,6 +39,11 @@ export interface AgentDeps {
 
 /** What a shared location becomes for the agent: the place is given separately, in the instructions. */
 const LOCATION_SHARED = "[The traveler just shared their location.]";
+
+/** What a confirmed cross-border trip becomes for the agent when the passport is already known. */
+const DOCUMENTS_BRIEF = "[The trip was just confirmed and their passport is known: tell what each country on the route asks of it.]";
+
+const PASSPORT_TOPIC = "travel.passport";
 
 export type TraceStep =
   | { kind: "scope"; parts: ScopePart[] }
@@ -102,6 +108,28 @@ const ABOUT_RULES =
   /\b(rules?|instructions?|prompt|system|guard|policy|policies|reglas?|instrucci\w*|sistema|pol[ií]ticas?|r[eè]gles?|consignes?|syst[eè]me)\b/i;
 
 const TOOLS = [
+  {
+    type: "function",
+    name: "set_passport",
+    description: "Writes down the passport the traveler flies with, when they tell you. Call it before documents_for_trip.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["country", "quote"],
+      properties: {
+        country: { type: "string", description: "ISO 3166-1 alpha-2 code of the passport's country, e.g. MX, US, CA, FR" },
+        quote: { type: "string", description: "the traveler's own words" },
+      },
+    },
+    strict: true,
+  },
+  {
+    type: "function",
+    name: "documents_for_trip",
+    description: "What each country on the route (entry, or transit at a connection) asks of the traveler's passport, from official pages.",
+    parameters: { type: "object", additionalProperties: false, required: [], properties: {} },
+    strict: true,
+  },
   {
     type: "function",
     name: "get_flight_status",
@@ -282,7 +310,7 @@ export function longestDeadlineDays(entries: RightEntry[]): number {
 /** Builds the pieces the Conversation needs: itinerary extraction and the trip agent. */
 export function createEscalaAgent(
   deps: AgentDeps,
-): Pick<ConversationDeps, "extractItinerary" | "agent"> & { reset(personId: string): void; sweep(now?: number): void } {
+): Pick<ConversationDeps, "extractItinerary" | "agent" | "crossesBorder" | "briefDocuments" | "rememberedPassport"> & { reset(personId: string): void; sweep(now?: number): void } {
   const trace = deps.trace ?? (() => {});
   const longestClaimDays = longestDeadlineDays(deps.entries);
   const checking = createChecking();
@@ -439,11 +467,14 @@ export function createEscalaAgent(
       "If rights_for_trip returns nothing for this country or this kind of problem, say your rules don't cover it yet; never conclude that no rights exist or that the airline owes nothing. " +
       "Ask at most one question, and only the one rights_for_trip returned or one needed to answer; don't end with offers phrased as questions. " +
       "You give information with sources, not legal advice; never promise compensation. Never book anything, and offer only what you can do: you cannot see other flights or seats. " +
+      "Entry and transit documents: when the traveler tells which passport they fly with, call set_passport (dual nationals: the one they fly with), then documents_for_trip, and say for each country on the route, the connection included, what it asks, with the official page and the day it was read. " +
+      "Never state a visa, authorization or entry requirement that documents_for_trip did not return; for a country it does not cover, say you don't have it verified yet and give its official page; if a rule is NO_VERIFICADO, say so. " +
       "You cannot message other people yet: if asked to tell someone something, say so kindly and give a short ready-to-forward message in the traveler's language with only what they told you or the trip shows. " +
       "For getting around, places, food, stays, events, tours, airport layout or safety, call search_travel_info and offer what it found as a suggestion, " +
       "naming the source and the day it was checked, with at most two of its links at the end. Next to each place or route, put its maps_link so they can follow it with their GPS. If it says 'unconfirmed', or sources disagree, say plainly that you could not confirm it. " +
       "Never present something from the web as certain. Use convert for currencies and measures; currency results are reference rates of the date it gives, not what a bank charges. " +
       `Trip: ${tripText}.` +
+      (crossesBorder(trip) ? ` Passport they fly with: ${p.passport ?? "not known yet (ask only if documents come up and it is your one question)"}.` : "") +
       (deps.memory
         ? ` When the traveler shares a useful habit or preference, call remember with their own words: scope "profile" for habits and preferences that matter on future trips${p.share === "profile" ? "" : " (they have not turned that on, so use \"trip\")"}, scope "trip" for what only matters now.`
         : "") +
@@ -597,6 +628,37 @@ export function createEscalaAgent(
         airline_announced_delay: (lateMin ?? 0) > 0 || snap.departure.estimated !== snap.departure.scheduled,
       };
     }
+    if (name === "set_passport") {
+      const country = String(args.country ?? "").trim().toUpperCase();
+      if (!/^[A-Z]{2}$/.test(country)) return { error: "use the two-letter country code of the passport" };
+      p.passport = country;
+      let remembered = false;
+      if (deps.memory && p.share === "profile") {
+        try {
+          deps.memory.remember(p.id, {
+            scope: "profile",
+            topic: PASSPORT_TOPIC,
+            statement: `passport: ${country}`,
+            source: { kind: "message", ref: currentMessage.id, at: currentMessage.at, quote: scrub(String(args.quote ?? "")).slice(0, 200) },
+          });
+          remembered = true;
+        } catch {
+          remembered = false;
+        }
+      }
+      return { saved: country, remembered_for_future_trips: remembered };
+    }
+    if (name === "documents_for_trip") {
+      if (!p.passport) return { error: "passport unknown: ask which passport they fly with" };
+      const found = documentsFor(p.passport, trip);
+      // What an official page states may be repeated, attributed to it.
+      for (const c of found.flatMap((f) => f.rules.flatMap((r) => extractClaims(`${r.requirement} ${r.conditions ?? ""}`)))) {
+        if (c.kind === "amount" && c.currency) allowed.amounts.push({ currency: c.currency, value: c.value });
+        if (c.kind === "percent") allowed.percents.push(c.value);
+        if (c.kind === "duration") allowed.durations.push(c.value);
+      }
+      return { passport: p.passport, countries: found, note: "information from official pages, not legal advice" };
+    }
     if (name === "remember") {
       if (!deps.memory) return { error: "memory is not available" };
       try {
@@ -690,6 +752,20 @@ export function createEscalaAgent(
   return {
     extractItinerary,
     agent,
+    crossesBorder: (p: Person) => crossesBorder(p.trip as Trip | undefined),
+    rememberedPassport(p: Person) {
+      if (!deps.memory || p.share !== "profile") return undefined;
+      const f = deps.memory.recall(p.id, { scope: "profile", topic: PASSPORT_TOPIC }).at(-1);
+      return (f && passportFromStatement(f.statement)) ?? undefined;
+    },
+    async briefDocuments(p: Person) {
+      const at = new Date().toISOString();
+      messageId = `documents-${Date.now()}`;
+      messageAt = at;
+      currentMessage = { id: messageId, at };
+      const draft = await answer(DOCUMENTS_BRIEF, p, p.trip as Trip | undefined, { amounts: [], percents: [], durations: [] }, recentTurns(p, Date.parse(at)));
+      return draft.trim() ? [{ kind: "text" as const, text: draft.trim() }] : [];
+    },
     reset(personId: string) {
       asked.delete(personId);
       askedAt.delete(personId);

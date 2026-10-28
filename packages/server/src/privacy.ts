@@ -71,6 +71,9 @@ and what a voice note was heard as) to find mistakes and improve Escala. Use mad
   <li>Voice notes are converted to text (Muse Voice Transcribe) and then handled like a written message; the audio itself is not kept.</li>
   <li>If you share your location in WhatsApp, Escala uses it for directions and nearby suggestions: it goes to Meta's model with your
   question, is kept encrypted for two hours and then deleted, and is never remembered for future trips.</li>
+  <li>If your trip crosses borders, Escala asks which passport you fly with, only the country, never its number, to tell you
+  what each country on the route asks for. It is kept with your trip and deleted with it; if you turned on memory for future
+  trips, it is remembered until you ask Escala to forget it.</li>
   <li>Server logs record that a message arrived and its type, with a keyed tag instead of your number, plus usage and error codes;
   apart from the sealed test-phase lines above, they are not meant to hold what you write, and error texts are cut short.</li>
   <li>To keep costs bounded, each person can send a limited number of messages, photos and voice notes per hour.</li>

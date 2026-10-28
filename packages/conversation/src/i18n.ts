@@ -73,6 +73,7 @@ type Texts = {
   askItinerary: string;
   itinerarySummary: (lines: string[]) => string;
   confirmed: string;
+  passportQuestion: string;
   /** Button under the itinerary request: a demo trip whose simulated flights play out in minutes. Max 20 characters. */
   demoButton: string;
   /** After confirming a trip whose flights Escala cannot follow (flight data is simulated during the test). */
@@ -105,6 +106,7 @@ export const T: Record<Lang, Texts> = {
     askItinerary: "Send me your trip however you have it: the confirmation email, a screenshot, a PDF, or just the flight numbers.",
     itinerarySummary: (lines) => `This is what I have:\n\n${lines.join("\n")}\n\nDid I get it right?`,
     confirmed: "Perfect. I'm keeping an eye on your flights and I'll tell you the moment something changes. Ask me anything about your trip.",
+    passportQuestion: "This trip crosses borders: which passport are you flying with? With that I'll tell you what each country on the way asks for, the connection included.",
     demoButton: "Try a demo trip",
     notWatching: "Saved. One thing: in this test, flight data is simulated, so I can't follow real flights. I can still help with anything about your trip. To see live flight alerts, try the demo trip.",
     fixPrompt: "No problem. What should I fix?",
@@ -160,6 +162,7 @@ export const T: Record<Lang, Texts> = {
     askItinerary: "Mándame tu viaje como lo tengas: el correo de confirmación, una captura, un PDF o solo los números de vuelo.",
     itinerarySummary: (lines) => `Esto es lo que tengo:\n\n${lines.join("\n")}\n\n¿Está bien?`,
     confirmed: "Perfecto. Ya estoy al pendiente de tus vuelos y te aviso en cuanto algo cambie. Pregúntame lo que quieras de tu viaje.",
+    passportQuestion: "Este viaje cruza fronteras: ¿con qué pasaporte vas a volar? Con eso te digo qué te pide cada país de la ruta, incluida la escala.",
     demoButton: "Probar viaje demo",
     notWatching: "Listo, lo guardé. Un detalle: en esta prueba los datos de vuelo son simulados, así que no puedo seguir vuelos reales. Igual te ayudo con todo lo de tu viaje. Para ver avisos de vuelo en vivo, prueba el viaje demo.",
     fixPrompt: "Claro. ¿Qué corrijo?",
@@ -215,6 +218,7 @@ export const T: Record<Lang, Texts> = {
     askItinerary: "Envoyez-moi votre voyage comme vous l'avez : le courriel de confirmation, une capture, un PDF ou simplement les numéros de vol.",
     itinerarySummary: (lines) => `Voici ce que j'ai :\n\n${lines.join("\n")}\n\nC'est bien ça ?`,
     confirmed: "Parfait. Je surveille vos vols et je vous préviens dès que quelque chose change. Demandez-moi ce que vous voulez sur votre voyage.",
+    passportQuestion: "Ce voyage passe des frontières : avec quel passeport voyagez-vous ? Je vous dirai ce que demande chaque pays du trajet, correspondance comprise.",
     demoButton: "Voyage de démo",
     notWatching: "C'est noté. Une précision : dans ce test, les données de vol sont simulées, je ne peux donc pas suivre de vrais vols. Je peux quand même vous aider pour tout votre voyage. Pour voir des alertes de vol en direct, essayez le voyage de démo.",
     fixPrompt: "Bien sûr. Qu'est-ce que je corrige ?",

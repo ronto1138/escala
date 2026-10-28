@@ -52,6 +52,8 @@ export interface Person {
   recent?: Turn[];
   /** Where the person said they are, for directions and nearby suggestions. Kept for two hours, never remembered. */
   location?: SharedLocation;
+  /** The country of the passport they fly with (ISO 3166-1 alpha-2), as they said it. Kept like the rest of the trip, or remembered if they turned memory on. */
+  passport?: string;
 }
 
 export interface SharedLocation {
@@ -88,6 +90,12 @@ export interface ConversationDeps {
   agent?(m: InboundMessage, person: Person): Promise<OutboundMessage[]>;
   /** After a trip is confirmed. `watching: false` means its flights cannot be followed (not in the simulated data). */
   onTripConfirmed?(person: Person): Promise<void | { watching: boolean }>;
+  /** True when the trip lands in a country other than where it starts: entry and transit documents matter. */
+  crossesBorder?(person: Person): boolean;
+  /** The passport remembered from an earlier trip, when they turned memory on. */
+  rememberedPassport?(person: Person): string | undefined;
+  /** What each country on the route asks of this passport, as messages. Used when the passport is already known. */
+  briefDocuments?(person: Person): Promise<OutboundMessage[]>;
   /** A ready-made trip whose simulated flights play out in minutes, offered with a button next to the itinerary request. */
   demoTrip?(person: Person): ExtractedTrip | null;
   /** Erase everything kept about this person (memory, trips, case files). */
@@ -253,6 +261,7 @@ export class Conversation {
         await this.deps.onShareChanged?.(p);
         await this.say(p, p.share === "profile" ? T[p.lang].sharedProfile : T[p.lang].sharedTrip);
         if (!p.trip && !p.pending) return this.askForTrip(p);
+        if (p.trip) await this.afterTrip(p);
         return;
       }
     }
@@ -308,6 +317,7 @@ export class Conversation {
         await this.deps.onShareChanged?.(p);
         await this.say(p, p.share === "profile" ? T[p.lang].sharedProfile : T[p.lang].sharedTrip);
         if (!p.trip && !p.pending) await this.askForTrip(p);
+        else if (p.trip) await this.afterTrip(p);
         return true;
       case "confirm":
         if (!p.pending) return false;
@@ -400,6 +410,20 @@ export class Conversation {
       p.shareAsked = true;
       p.awaiting = "share";
       await this.say(p, T[p.lang].shareQuestion);
+      return; // documents come after that answer
+    }
+    await this.afterTrip(p);
+  }
+
+  /** Once the trip is set: if it crosses borders, the documents each country asks for, or the question that unlocks them. */
+  private async afterTrip(p: Person) {
+    if (!this.deps.crossesBorder?.(p)) return;
+    const remembered = p.passport ? undefined : this.deps.rememberedPassport?.(p);
+    if (remembered) p.passport = remembered;
+    if (!p.passport || !this.deps.briefDocuments) return this.say(p, T[p.lang].passportQuestion);
+    for (const out of await this.deps.briefDocuments(p)) {
+      await this.deps.channel.send(p.id, out);
+      if (out.kind === "text") this.remember(p, "escala", out.text, new Date().toISOString());
     }
   }
 
