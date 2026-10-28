@@ -435,3 +435,26 @@ describe("a trip that crosses borders", () => {
     expect(out().at(-1)).toEqual({ kind: "text", text: "documents for MX" });
   });
 });
+
+describe("someone speaking to the traveler", () => {
+  it("is interpreted in the traveler's language, never taken as a language switch", async () => {
+    const sim = new SimChannel(() => Date.parse("2026-11-06T16:00:00Z"));
+    const seen: any[] = [];
+    const conv = new Conversation({
+      channel: sim,
+      extractItinerary: async () => null,
+      demoTrip: () => ({ lines: ["ZZ 1234 · demo"], trip: { legs: 2 } }),
+      transcribe: async () => "What is the purpose of your trip and where are you staying?",
+      whoSpeaks: async () => "other",
+      agent: async (m) => (seen.push(m), [{ kind: "text", text: "ok" }]),
+    });
+    for (const text of ["hola", "solo este viaje"]) await sim.userSends("15550006003", { kind: "text", text });
+    await sim.userSends("15550006003", { kind: "interactive", replyId: "demo_trip", title: "Probar viaje demo" });
+    await sim.userSends("15550006003", { kind: "text", text: "sí" });
+    await sim.userSends("15550006003", { kind: "audio", mediaId: "a", mimeType: "audio/ogg", voice: true });
+    const out = sim.transcript.filter((e) => e.direction === "out").map((e) => (e.message as any).text);
+    expect(out).toContain("🎙️ Te dijeron: «What is the purpose of your trip and where are you staying?»");
+    expect(seen.at(-1)).toMatchObject({ kind: "text", spokenBy: "other" });
+    expect(conv.people.get("15550006003")!.lang).toBe("es");
+  });
+});

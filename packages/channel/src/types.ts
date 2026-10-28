@@ -8,7 +8,8 @@ export type InboundMessage = {
   /** The name the person set in their WhatsApp profile, when WhatsApp sends it (may be a nickname). */
   profileName?: string;
 } & (
-  | { kind: "text"; text: string }
+  /** `spokenBy: "other"`: a voice note of someone speaking to the traveler (an officer, a flight attendant), to interpret. */
+  | { kind: "text"; text: string; spokenBy?: "other" }
   | { kind: "image" | "audio" | "video" | "document"; mediaId: string; mimeType: string; caption?: string; voice?: boolean }
   | { kind: "location"; latitude: number; longitude: number; name?: string }
   /** A tap on a reply button or a list row we sent. */

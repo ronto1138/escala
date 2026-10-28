@@ -60,6 +60,8 @@ export interface Person {
   details?: TripDetails;
   /** What their boarding passes say, by flight ("ZZ1234"): boarding time and gate as printed, seat, group. */
   boardingPasses?: Record<string, { boardingTime?: string; gate?: string; seat?: string; group?: string; date?: string }>;
+  /** How they travel, for the style of every answer: step by step for someone new to it, straight to the point for someone who flies often. */
+  style?: "novice" | "frequent";
   /** The country of the passport they fly with (ISO 3166-1 alpha-2), as they said it. Kept like the rest of the trip, or remembered if they turned memory on. */
   passport?: string;
 }
@@ -113,6 +115,8 @@ export interface ConversationDeps {
   agent?(m: InboundMessage, person: Person): Promise<OutboundMessage[]>;
   /** After a trip is confirmed. `watching: false` means its flights cannot be followed (not in the simulated data). */
   onTripConfirmed?(person: Person): Promise<void | { watching: boolean }>;
+  /** Whether a voice note is the traveler talking to Escala or someone else speaking to them (to interpret). */
+  whoSpeaks?(said: string, person: Person): Promise<"traveler" | "other">;
   /** True when the trip lands in a country other than where it starts: entry and transit documents matter. */
   crossesBorder?(person: Person): boolean;
   /** The passport remembered from an earlier trip, when they turned memory on. */
@@ -172,10 +176,13 @@ export class Conversation {
     if (m.kind === "audio" && this.deps.transcribe) {
       const known = this.people.get(m.from);
       const said = (await this.deps.transcribe(m, known))?.trim();
-      const lang = (said && clearLang(said)) || (known?.langFromText ? known.lang : said ? detectLang(said) : (known?.lang ?? "en"));
+      // Someone speaking to the traveler (an officer, a flight attendant) is interpreted, not taken as the traveler's words.
+      const other = Boolean(said && known?.trip && this.deps.whoSpeaks && (await this.deps.whoSpeaks(said, known).catch(() => "traveler")) === "other");
+      const lang = other ? known!.lang : (said && clearLang(said)) || (known?.langFromText ? known.lang : said ? detectLang(said) : (known?.lang ?? "en"));
       if (!said) return void (await this.deps.channel.send(m.from, { kind: "text", text: T[lang].notHeard }));
-      await this.deps.channel.send(m.from, { kind: "text", text: T[lang].heard(said.length > 300 ? `${said.slice(0, 300)}…` : said) });
-      m = { id: m.id, from: m.from, at: m.at, kind: "text", text: said };
+      const shown = said.length > 300 ? `${said.slice(0, 300)}…` : said;
+      await this.deps.channel.send(m.from, { kind: "text", text: other ? T[lang].heardOther(shown) : T[lang].heard(shown) });
+      m = { id: m.id, from: m.from, at: m.at, kind: "text", text: said, ...(other ? { spokenBy: "other" as const } : {}) };
     }
     const text = m.kind === "text" ? m.text.trim() : "";
     const word = normalize(text);
@@ -232,9 +239,9 @@ export class Conversation {
     }
 
     // Someone who switches language is answered in the new one, once the message makes it clear.
-    const switched = text ? clearLang(text) : null;
+    const switched = text && !(m.kind === "text" && m.spokenBy === "other") ? clearLang(text) : null;
     if (switched && p.langFromText && switched !== p.lang) p.lang = switched;
-    if (!p.langFromText && text) {
+    if (!p.langFromText && text && !(m.kind === "text" && m.spokenBy === "other")) {
       p.lang = detectLang(text);
       p.langFromText = true;
     }

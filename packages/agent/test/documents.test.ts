@@ -65,8 +65,8 @@ describe("what Escala still needs around the flights", () => {
   it("asks only for what is unknown, in the traveler's language", async () => {
     const { prepQuestion } = await import("../src/agent.ts");
     const p = (details: object) => ({ id: "x", lang: "es", details }) as any;
-    expect(prepQuestion(p({}))).toBe("Para ayudarte en el camino, cuéntame dónde te vas a quedar (nombre y dirección: los formularios la piden), si vas a documentar maleta y si vas a rentar coche.");
-    expect(prepQuestion(p({ stay: "Hotel Ejemplo", checkedBags: 1 }))).toBe("Para ayudarte en el camino, cuéntame si vas a rentar coche.");
-    expect(prepQuestion(p({ stay: "H", checkedBags: 0, rentalCar: null }))).toBeNull();
+    expect(prepQuestion(p({}))).toBe("Para ayudarte en el camino, cuéntame dónde te vas a quedar (nombre y dirección: los formularios la piden), si vas a documentar maleta, si vas a rentar coche y si viajas seguido o es algo nuevo para ti.");
+    expect(prepQuestion({ ...p({ stay: "Hotel Ejemplo", checkedBags: 1 }), style: "novice" })).toBe("Para ayudarte en el camino, cuéntame si vas a rentar coche.");
+    expect(prepQuestion({ ...p({ stay: "H", checkedBags: 0, rentalCar: null }), style: "frequent" })).toBeNull();
   });
 });

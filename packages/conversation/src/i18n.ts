@@ -82,6 +82,8 @@ type Texts = {
   notReadable: string;
   /** What Escala understood from a voice note, so a misheard word can be corrected at once. */
   heard: (text: string) => string;
+  /** A voice note of someone else speaking to the traveler, in another language. */
+  heardOther: (text: string) => string;
   notHeard: string;
   /** Full privacy note, only when asked. */
   privacy: string;
@@ -112,6 +114,7 @@ export const T: Record<Lang, Texts> = {
     fixPrompt: "No problem. What should I fix?",
     notReadable: "I couldn't find a trip there. Could you send me the confirmation email, a screenshot, or the flight numbers and dates?",
     heard: (t) => `🎙️ I heard: "${t}"`,
+    heardOther: (t) => `🎙️ Someone told you: "${t}"`,
     notHeard: "I couldn't make out that voice note. Could you say it again, or write it?",
     privacy:
       "Your messages travel encrypted. To help you, Escala and the Meta service that manages this chat process them. " +
@@ -168,6 +171,7 @@ export const T: Record<Lang, Texts> = {
     fixPrompt: "Claro. ¿Qué corrijo?",
     notReadable: "No encontré un viaje ahí. ¿Me mandas el correo de confirmación, una captura o los números de vuelo y las fechas?",
     heard: (t) => `🎙️ Entendí: «${t}»`,
+    heardOther: (t) => `🎙️ Te dijeron: «${t}»`,
     notHeard: "No alcancé a entender la nota de voz. ¿Me la repites o me la escribes?",
     privacy:
       "Tus mensajes viajan cifrados. Para ayudarte, Escala y el servicio de Meta que gestiona este chat los procesan. " +
@@ -224,6 +228,7 @@ export const T: Record<Lang, Texts> = {
     fixPrompt: "Bien sûr. Qu'est-ce que je corrige ?",
     notReadable: "Je n'ai pas trouvé de voyage. Pouvez-vous m'envoyer le courriel de confirmation, une capture ou les numéros de vol et les dates ?",
     heard: (t) => `🎙️ J'ai compris : « ${t} »`,
+    heardOther: (t) => `🎙️ On vous a dit : « ${t} »`,
     notHeard: "Je n'ai pas bien compris le message vocal. Pouvez-vous le répéter ou l'écrire ?",
     privacy:
       "Vos messages voyagent chiffrés. Pour vous aider, Escala et le service de Meta qui gère cette conversation les traitent. " +

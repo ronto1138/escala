@@ -98,6 +98,7 @@ const conversation = new Conversation({
   extractItinerary: escala.extractItinerary,
   agent: escala.agent!,
   crossesBorder: escala.crossesBorder!,
+  whoSpeaks: escala.whoSpeaks!,
   rememberedPassport: escala.rememberedPassport!,
   briefDocuments: escala.briefDocuments!,
   // Short answers to Escala's questions: keywords first, Muse Spark when they are not enough.
