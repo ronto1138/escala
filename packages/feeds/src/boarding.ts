@@ -7,7 +7,9 @@ import type { FlightSnapshot } from "./types.ts";
  */
 export interface BoardingRule {
   airline: string;
+  /** Boarding starts this long before departure; with `startsLatestMin`, the early end of a published range. */
   startsMin?: number;
+  startsLatestMin?: number;
   gateByMin?: number;
   closesMin?: number;
   intl?: { startsMin?: number; gateByMin?: number; closesMin?: number };
@@ -18,6 +20,7 @@ export interface BoardingRule {
 }
 
 export const BOARDING: Record<string, BoardingRule> = {
+  UA: { airline: "United", startsMin: 50, startsLatestMin: 40, closesMin: 15, url: "https://www.united.com/en/us/fly/travel/airport/boarding-process.html", checkedOn: "2026-10-28" },
   AA: { airline: "American", closesMin: 15, url: "https://www.aa.com/i18n/travel-info/boarding-process.jsp", checkedOn: "2026-10-28" },
   DL: { airline: "Delta", gateByMin: 15, intl: { gateByMin: 45 }, url: "https://www.delta.com/us/en/check-in-security/check-in-time-requirements/domestic-check-in", checkedOn: "2026-10-28" },
   WN: { airline: "Southwest", gateByMin: 10, url: "https://support.southwest.com/helpcenter/s/article/online-checkin", checkedOn: "2026-10-28" },
@@ -31,8 +34,8 @@ export const BOARDING: Record<string, BoardingRule> = {
 };
 
 /**
- * When the airline publishes nothing: the range two large airlines publish for "most flights" (read 2026-10-28). It is
- * a typical range, not this airline's rule, and is said as such. United's page was read from the search index.
+ * When the airline publishes nothing: the ranges two large airlines publish for "most flights" (read 2026-10-28: American
+ * 30-50 min, United 40-50). It is a typical range, not this airline's rule, and is said as such.
  */
 export const TYPICAL_BOARDING = {
   fromMin: 30,
@@ -57,11 +60,11 @@ export function international(s: FlightSnapshot): boolean {
   return Boolean(a && b && a !== b);
 }
 
-export function ruleFor(s: FlightSnapshot): { rule: BoardingRule; startsMin?: number; gateByMin?: number; closesMin?: number } | null {
+export function ruleFor(s: FlightSnapshot): { rule: BoardingRule; startsMin?: number; startsLatestMin?: number; gateByMin?: number; closesMin?: number } | null {
   const rule = BOARDING[(s.operator ?? norm(s.ident).slice(0, 2)).toUpperCase()];
   if (!rule) return null;
   const o = international(s) ? { ...rule, ...rule.intl } : rule;
-  return { rule, ...(o.startsMin ? { startsMin: o.startsMin } : {}), ...(o.gateByMin ? { gateByMin: o.gateByMin } : {}), ...(o.closesMin ? { closesMin: o.closesMin } : {}) };
+  return { rule, ...(o.startsMin ? { startsMin: o.startsMin } : {}), ...(o.startsLatestMin ? { startsLatestMin: o.startsLatestMin } : {}), ...(o.gateByMin ? { gateByMin: o.gateByMin } : {}), ...(o.closesMin ? { closesMin: o.closesMin } : {}) };
 }
 
 /** When to remind: ahead of the earliest moment the airline publishes, or an hour before departure. */

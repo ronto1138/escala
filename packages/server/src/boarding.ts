@@ -39,7 +39,11 @@ export function boardingText(s: FlightSnapshot, lang: Lang, city: string): strin
   parts.fr.push(`part à ${clock(dep, tz)} (heure de ${city})${gate ? `, porte ${gate}` : ", pas encore de porte ; je vous préviens dès qu'elle est connue"}`);
   if (r) {
     const said: Record<Lang, string[]> = { en: [], es: [], fr: [] };
-    if (r.startsMin) {
+    if (r.startsMin && r.startsLatestMin) {
+      said.en.push(`boarding starts between ${at(r.startsMin)} and ${at(r.startsLatestMin)}`);
+      said.es.push(`el abordaje empieza entre las ${at(r.startsMin)} y las ${at(r.startsLatestMin)}`);
+      said.fr.push(`l'embarquement commence entre ${at(r.startsMin)} et ${at(r.startsLatestMin)}`);
+    } else if (r.startsMin) {
       said.en.push(`boarding starts around ${at(r.startsMin)}`);
       said.es.push(`el abordaje empieza hacia las ${at(r.startsMin)}`);
       said.fr.push(`l'embarquement commence vers ${at(r.startsMin)}`);
@@ -60,9 +64,9 @@ export function boardingText(s: FlightSnapshot, lang: Lang, city: string): strin
     parts.fr.push(`${r.rule.example ? "Selon la règle d'exemple de la compagnie de démo" : `Selon ${r.rule.airline} (${r.rule.url}, consulté le ${day})`}, ${said.fr.join(" et ")}`);
   } else {
     const { fromMin: a, toMin: b } = TYPICAL_BOARDING;
-    parts.en.push(`This airline doesn't publish its boarding time; airlines usually start ${a} to ${b} min before departure (the range American and United publish), so between ${at(b)} and ${at(a)}. Your boarding pass has the exact time`);
-    parts.es.push(`Esta aerolínea no publica su hora de abordaje; las aerolíneas suelen empezar entre ${a} y ${b} min antes de la salida (el rango que publican American y United), o sea entre las ${at(b)} y las ${at(a)}. La hora exacta está en tu pase de abordar`);
-    parts.fr.push(`Cette compagnie ne publie pas son heure d'embarquement ; les compagnies commencent en général ${a} à ${b} min avant le départ (la fourchette que publient American et United), soit entre ${at(b)} et ${at(a)}. L'heure exacte est sur votre carte d'embarquement`);
+    parts.en.push(`This airline doesn't publish its boarding time; airlines usually start ${a} to ${b} min before departure (the ranges American and United publish), so between ${at(b)} and ${at(a)}. Your boarding pass has the exact time`);
+    parts.es.push(`Esta aerolínea no publica su hora de abordaje; las aerolíneas suelen empezar entre ${a} y ${b} min antes de la salida (los rangos que publican American y United), o sea entre las ${at(b)} y las ${at(a)}. La hora exacta está en tu pase de abordar`);
+    parts.fr.push(`Cette compagnie ne publie pas son heure d'embarquement ; les compagnies commencent en général ${a} à ${b} min avant le départ (les fourchettes que publient American et United), soit entre ${at(b)} et ${at(a)}. L'heure exacte est sur votre carte d'embarquement`);
   }
   return parts[lang].join(". ");
 }

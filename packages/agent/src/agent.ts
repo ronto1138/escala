@@ -616,7 +616,7 @@ export function createEscalaAgent(
       for (const n of [lateMin, inboundMin, inference?.minTurnMinutes]) if (n) allowed.durations.push(n, Math.round((n / 60) * 10) / 10);
       // Boarding minutes the airline publishes, or the typical range when it publishes none.
       const br = ruleFor(snap);
-      for (const n of br ? [br.startsMin, br.gateByMin, br.closesMin] : [TYPICAL_BOARDING.fromMin, TYPICAL_BOARDING.toMin]) if (n) allowed.durations.push(n);
+      for (const n of br ? [br.startsMin, br.startsLatestMin, br.gateByMin, br.closesMin] : [TYPICAL_BOARDING.fromMin, TYPICAL_BOARDING.toMin]) if (n) allowed.durations.push(n);
       const dz = snap.origin.timezone ?? "UTC";
       const az = snap.destination.timezone ?? "UTC";
       return {
@@ -805,7 +805,7 @@ function boardingFor(snap: FlightSnapshot, tz: string) {
     const { fromMin, toMin, sources, checkedOn } = TYPICAL_BOARDING;
     return {
       published: false,
-      note: `this airline does not publish its boarding time; airlines usually start ${fromMin} to ${toMin} min before departure (the range American and United publish). Say it is a typical range, not this airline's rule, and that the boarding pass has the exact time`,
+      note: `this airline does not publish its boarding time; airlines usually start ${fromMin} to ${toMin} min before departure (the ranges American and United publish). Say it is a typical range, not this airline's rule, and that the boarding pass has the exact time`,
       typical_boarding_window: { from: local(new Date(dep - toMin * 60_000).toISOString(), tz), to: local(new Date(dep - fromMin * 60_000).toISOString(), tz) },
       sources,
       checked_on: checkedOn,
@@ -817,7 +817,7 @@ function boardingFor(snap: FlightSnapshot, tz: string) {
     by: r.rule.example ? "example rule of the demo's simulated airline" : r.rule.airline,
     source: r.rule.url || null,
     checked_on: r.rule.checkedOn || null,
-    boarding_starts: at(r.startsMin),
+    boarding_starts: r.startsLatestMin ? `between ${at(r.startsMin)} and ${at(r.startsLatestMin)}` : at(r.startsMin),
     be_at_gate_by: at(r.gateByMin),
     gate_closes: at(r.closesMin),
   };
