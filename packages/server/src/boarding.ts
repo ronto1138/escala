@@ -73,10 +73,11 @@ export function boardingText(s: FlightSnapshot, lang: Lang, city: string, pass?:
     parts.es.push(`${r.rule.example ? "Según la regla de ejemplo de la aerolínea del demo" : `Según ${r.rule.airline} (${r.rule.url}, consultado el ${day})`}, ${said.es.join(" y ")}`);
     parts.fr.push(`${r.rule.example ? "Selon la règle d'exemple de la compagnie de démo" : `Selon ${r.rule.airline} (${r.rule.url}, consulté le ${day})`}, ${said.fr.join(" et ")}`);
   } else {
-    const { fromMin: a, toMin: b } = TYPICAL_BOARDING;
-    parts.en.push(`This airline doesn't publish its boarding time; airlines usually start ${a} to ${b} min before departure (the ranges American and United publish), so between ${at(b)} and ${at(a)}. Your boarding pass has the exact time`);
-    parts.es.push(`Esta aerolínea no publica su hora de abordaje; las aerolíneas suelen empezar entre ${a} y ${b} min antes de la salida (los rangos que publican American y United), o sea entre las ${at(b)} y las ${at(a)}. La hora exacta está en tu pase de abordar`);
-    parts.fr.push(`Cette compagnie ne publie pas son heure d'embarquement ; les compagnies commencent en général ${a} à ${b} min avant le départ (les fourchettes que publient American et United), soit entre ${at(b)} et ${at(a)}. L'heure exacte est sur votre carte d'embarquement`);
+    const { fromMin: a, toMin: b, checkedOn } = TYPICAL_BOARDING;
+    const seen = checkedOn.slice(5).split("-").reverse().join("/");
+    parts.en.push(`This airline doesn't publish its boarding time; airlines usually start ${a} to ${b} min before departure (the ranges American and United publish on aa.com and united.com, checked ${seen}), so between ${at(b)} and ${at(a)}. Your boarding pass has the exact time`);
+    parts.es.push(`Esta aerolínea no publica su hora de abordaje; las aerolíneas suelen empezar entre ${a} y ${b} min antes de la salida (los rangos que publican American y United en aa.com y united.com, consultados el ${seen}), o sea entre las ${at(b)} y las ${at(a)}. La hora exacta está en tu pase de abordar`);
+    parts.fr.push(`Cette compagnie ne publie pas son heure d'embarquement ; les compagnies commencent en général ${a} à ${b} min avant le départ (les fourchettes que publient American et United sur aa.com et united.com, consultées le ${seen}), soit entre ${at(b)} et ${at(a)}. L'heure exacte est sur votre carte d'embarquement`);
   }
   return parts[lang].join(". ");
 }
@@ -154,7 +155,10 @@ export function createBoardingReminders(deps: BoardingDeps) {
         const key = `${p.id}|${s.flightId}`;
         if (told.has(key)) continue;
         const dep = Date.parse(s.departure.estimated ?? s.departure.scheduled ?? "");
-        const pass = p.boardingPasses?.[norm(s.ident)];
+        const stored = p.boardingPasses?.[norm(s.ident)];
+        // A pass for the same flight number on another day says nothing about this one.
+        const depDay = s.departure.scheduled && s.origin.timezone ? new Intl.DateTimeFormat("en-CA", { timeZone: s.origin.timezone }).format(new Date(s.departure.scheduled)) : null;
+        const pass = stored && (!stored.date || !depDay || stored.date === depDay) ? stored : undefined;
         const printed = pass?.boardingTime ? passInstant(pass.boardingTime, s, dep) : NaN;
         // The pass's own boarding time beats any rule: remind a quarter of an hour before it.
         const at = Number.isFinite(printed) ? printed - 15 * 60_000 : remindAt(s);

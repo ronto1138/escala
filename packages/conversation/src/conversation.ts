@@ -75,6 +75,8 @@ export interface TripDetails {
   bagKg?: number;
   /** Rental car company at the destination; "" when they rent one without saying which; null when they don't. */
   rentalCar?: string | null;
+  /** The place whose address Escala already looked up, so it is not searched again. */
+  addressLookedUp?: string;
 }
 
 export interface SharedLocation {

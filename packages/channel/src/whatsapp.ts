@@ -153,7 +153,9 @@ export function fromWebhook(payload: any): InboundMessage[] {
     for (const change of list(entry?.changes)) {
       const names = new Map<string, string>();
       for (const c of list(change?.value?.contacts)) {
-        const name = typeof c?.profile?.name === "string" ? c.profile.name.replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, 40) : "";
+        // Only a plain name reaches Escala (letters, spaces, apostrophes, hyphens): anything else could be read as instructions.
+        const raw = typeof c?.profile?.name === "string" ? c.profile.name.normalize("NFC").trim() : "";
+        const name = /^[\p{L}][\p{L}' -]{0,38}[\p{L}]$/u.test(raw) ? raw : "";
         if (typeof c?.wa_id === "string" && name) names.set(c.wa_id, name);
       }
       for (const m of list(change?.value?.messages)) {
