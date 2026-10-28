@@ -37,6 +37,7 @@ export const AIRPORTS: Record<string, Airport> = {
   ORD: { city: "Chicago O'Hare", country: "US", lat: 41.974, lon: -87.907, tz: "America/Chicago" },
   DEN: { city: "Denver", country: "US", lat: 39.856, lon: -104.674, tz: "America/Denver" },
   ELP: { city: "El Paso", country: "US", lat: 31.807, lon: -106.378, tz: "America/Denver" },
+  EWR: { city: "Newark", country: "US", lat: 40.69, lon: -74.175, tz: "America/New_York" },
   JFK: { city: "New York JFK", country: "US", lat: 40.641, lon: -73.778, tz: "America/New_York", names: { es: "Nueva York JFK", fr: "New York JFK" } },
   YUL: { city: "Montreal", country: "CA", lat: 45.47, lon: -73.741, tz: "America/Toronto", names: { es: "Montreal", fr: "Montréal" } },
   YYZ: { city: "Toronto", country: "CA", lat: 43.677, lon: -79.624, tz: "America/Toronto" },

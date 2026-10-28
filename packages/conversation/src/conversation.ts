@@ -77,6 +77,8 @@ export interface TripDetails {
   bagKg?: number;
   /** Rental car company at the destination; "" when they rent one without saying which; null when they don't. */
   rentalCar?: string | null;
+  /** Why they travel, as an immigration officer may ask it: tourism, family, friends, business, study, event. */
+  purpose?: string;
   /** The place whose address Escala already looked up, so it is not searched again. */
   addressLookedUp?: string;
 }

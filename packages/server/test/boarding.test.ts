@@ -76,3 +76,28 @@ describe("around the airport", () => {
     expect((due.sent[0] as { text: string }).text).toMatch(/Your boarding pass says boarding starts at 14:20\. The pass says gate 12, but it is now 17/);
   });
 });
+
+describe("immigration card before the flight", () => {
+  it("goes out once with the boarding reminder of the flight into a US connection, only inside the window", async () => {
+    const intl = { ...first, origin: { iata: "MEX", icao: "MMMX", timezone: "America/Mexico_City" } } as FlightSnapshot;
+    const trip = { bookingRef: null, legs: [
+      { flight: "ZZ1234", date: "2026-11-02", from: "MEX", to: "ORD", dep_local: "14:50", arr_local: "17:15" },
+      { flight: "ZZ567", date: "2026-11-02", from: "ORD", to: "YUL", dep_local: "19:30", arr_local: "22:40" },
+    ] };
+    const person = { id: "a", lang: "es", stage: "ready", details: { checkedBags: 0 }, trip } as unknown as Person;
+    const sent: OutboundMessage[] = [];
+    let open = false;
+    const tick = createBoardingReminders({
+      feed: { findByIdent: (i) => (i === "ZZ1234" ? intl : second), now: () => Date.parse("2026-11-02T20:00:00Z") },
+      people: () => [person], send: async (_to, m) => void sent.push(m), windowOpen: () => open, cityOf: () => "Ciudad de México",
+    });
+    await tick();
+    expect(sent.some((m) => "text" in m && m.text.startsWith("🛂"))).toBe(false);
+    open = true;
+    await tick();
+    await tick();
+    const cards = sent.filter((m) => "text" in m && m.text.startsWith("🛂"));
+    expect(cards).toHaveLength(1);
+    expect((cards[0] as { text: string }).text).toContain("📋 I am only connecting: today I fly on to Montreal on flight ZZ 567.");
+  });
+});

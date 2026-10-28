@@ -1,6 +1,6 @@
 import type { OutboundMessage, ParticipantId } from "@escala/channel";
 import type { Lang, Person } from "@escala/conversation";
-import { legInstant } from "@escala/agent";
+import { immigrationStops, immigrationText, legInstant, type Purpose, type Trip } from "@escala/agent";
 import { international, ruleFor, remindAt, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
 import { TEMPLATE, TEMPLATE_LANG } from "./notifier.ts";
 
@@ -173,6 +173,22 @@ export function createBoardingReminders(deps: BoardingDeps) {
           ? { kind: "text", text: `${OPEN[p.lang](flight, body)}${s.source === "replay" ? ` ${SIMULATED[p.lang]}` : ""}` }
           : { kind: "template", name: TEMPLATE, language: TEMPLATE_LANG[p.lang], bodyParams: [flight, body] };
         await send(key, p, m, "boarding_reminder", { published: Boolean(ruleFor(s)), from_pass: Number.isFinite(printed) });
+      }
+
+      // Before the flight that lands where an officer waits: the immigration card, to screenshot while there is signal.
+      // Only inside the 24-hour window: no approved template carries it.
+      const trip = p.trip as Trip | undefined;
+      for (const stop of open && trip ? immigrationStops(trip) : []) {
+        const s = deps.feed.findByIdent(stop.flight);
+        if (!s || s.cancelled) continue;
+        const key = `${p.id}|${s.flightId}|immigration`;
+        if (told.has(key)) continue;
+        const at = remindAt(s);
+        const lands = Date.parse(s.arrival.actual ?? s.arrival.estimated ?? s.arrival.scheduled ?? "");
+        if (at === null || now < at || !(now < lands - 20 * 60_000)) continue;
+        const d = p.details ?? {};
+        const text = immigrationText(trip!, stop, { stay: d.stay, stayAddress: d.stayAddress, purpose: d.purpose as Purpose | undefined }, p.lang);
+        await send(key, p, { kind: "text", text }, "immigration_card", { country: stop.country, role: stop.role });
       }
     }
   };
