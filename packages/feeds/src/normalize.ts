@@ -26,6 +26,8 @@ export function fromAeroFlight(f: AeroFlight, observedAt: string, source: Flight
     cancelled: f.cancelled,
     diverted: f.diverted,
     inboundFlightId: f.inbound_fa_flight_id,
+    aircraftType: f.aircraft_type ?? null,
+    registration: f.registration ?? null,
     observedAt,
   };
 }

@@ -10,7 +10,7 @@ const person = (id: string, over: Partial<Person> = {}): Person => ({
 });
 const snap = { ident: "ZZ1234", observedAt: "2026-11-02T12:00:00Z", departure: { scheduled: "2026-11-02T13:10:00Z" } } as unknown as FlightSnapshot;
 const late: FlightEvent = { kind: "arrival_delay_change", flightId: "f1", at: "2026-11-02T12:00:00Z", inference: false, minutesLate: 100, previousMinutesLate: 0 };
-const inbound: FlightEvent = { kind: "inbound_late", flightId: "f1", at: "2026-11-02T11:20:00Z", inference: true, inboundFlightId: "f0", inboundArrivalEstimate: "", scheduledDeparture: "", minTurnMinutes: 45, likelyDepartureDelayMinutes: 80 };
+const inbound: FlightEvent = { kind: "inbound_late", flightId: "f1", at: "2026-11-02T11:20:00Z", inference: true, inboundFlightId: "f0", inboundArrivalEstimate: "", scheduledDeparture: "", minTurnMinutes: 45, turnSource: "default", hops: 1, likelyDepartureDelayMinutes: 80 };
 
 function setup(people: Person[], open: (id: string) => boolean) {
   const sent: Array<{ to: string; m: OutboundMessage }> = [];

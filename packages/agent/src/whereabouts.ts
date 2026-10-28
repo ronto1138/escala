@@ -97,3 +97,58 @@ export function usableCheckingLine(text: string): boolean {
   const t = text.trim();
   return t.length >= 8 && t.length <= 160 && !/\d/.test(t) && !t.includes("?") && !/https?:/.test(t);
 }
+
+/** A local date and time at an airport ("2026-11-02", "07:10") as a UTC instant; NaN when the airport is unknown. */
+export function legInstant(date: string, time: string, iata: string): number {
+  const tz = AIRPORTS[iata]?.tz;
+  if (!tz || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) return NaN;
+  const guess = Date.parse(`${date}T${time}:00Z`);
+  // The zone's offset at that moment, read back from Intl; twice, so a guess across a DST change settles.
+  let at = guess;
+  for (let i = 0; i < 2; i++) at = guess - offsetMs(tz, at);
+  return at;
+}
+
+function offsetMs(tz: string, at: number): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" })
+      .formatToParts(new Date(at))
+      .map((x) => [x.type, x.value]),
+  );
+  return Date.parse(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}Z`) - Math.floor(at / 1000) * 1000;
+}
+
+/**
+ * Where the traveler most likely is right now, from the shared location if it is fresh and near the trip, otherwise from
+ * the itinerary and the clock: before the first flight, between flights, in the air, or after the last one.
+ * WhatsApp does not tell us the phone's time zone, so the airport's zone stands in for it.
+ */
+export function whereNow(trip: Trip | undefined, now: number, loc?: SharedLocation): { iata: string; city: string; tz: string; why: string } | null {
+  if (loc && locationIsFresh(loc, now)) {
+    const near = nearestTripAirport(loc, trip);
+    if (near && near.km <= 80) return { iata: near.iata, city: near.city, tz: AIRPORTS[near.iata]!.tz, why: "from the location they shared" };
+  }
+  const legs = (trip?.legs ?? [])
+    .map((l) => {
+      const dep = legInstant(l.date, l.dep_local, l.from);
+      let arr = legInstant(l.date, l.arr_local, l.to);
+      if (arr < dep) arr += 24 * 60 * 60 * 1000; // lands the next day
+      return { l, dep, arr };
+    })
+    .filter((x) => Number.isFinite(x.dep))
+    .sort((a, b) => a.dep - b.dep);
+  if (!legs.length) return null;
+  const at = (iata: string, why: string) => (AIRPORTS[iata] ? { iata, city: AIRPORTS[iata]!.city, tz: AIRPORTS[iata]!.tz, why } : null);
+  if (now < legs[0]!.dep) return at(legs[0]!.l.from, "before the first flight, so where the trip starts");
+  for (let i = 0; i < legs.length; i++) {
+    const x = legs[i]!;
+    if (now < x.dep) return at(x.l.from, `between flights, before ${x.l.flight}`);
+    if (Number.isFinite(x.arr) && now < x.arr) return at(x.l.from, `in the air on ${x.l.flight} (scheduled), so the time shown is where it left`);
+  }
+  return at(legs.at(-1)!.l.to, "after the last flight");
+}
+
+/** "Wed Oct 28, 14:23" in the zone, for the models. */
+export function localClock(now: number, tz: string): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(now));
+}

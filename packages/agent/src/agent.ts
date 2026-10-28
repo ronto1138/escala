@@ -1,13 +1,13 @@
 import type { InboundMessage, OutboundMessage } from "@escala/channel";
 import type { ConversationDeps, ExtractedTrip, Lang, Person } from "@escala/conversation";
-import { arrivalMinutesLate, inboundDelayMinutes, type FlightFeed } from "@escala/feeds";
+import { arrivalMinutesLate, inboundChain, inboundInference, type FlightFeed } from "@escala/feeds";
 import { outputText, type MetaClient, type OpenModelClient } from "@escala/meta-client";
 import { ConsentError, tripRetention, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
 import { forWhatsApp, legLine } from "./format.ts";
 import { evidenceReply, readEvidence, type EvidenceObject } from "./evidence.ts";
 import { convertUnits, mapsLink, RIGHTS_TOPIC, searchTravel, UNIT_NAMES, type createRates } from "./guide.ts";
-import { createChecking, describeLocation, locationIsFresh, usableCheckingLine } from "./whereabouts.ts";
+import { createChecking, describeLocation, localClock, locationIsFresh, usableCheckingLine, whereNow } from "./whereabouts.ts";
 import { acceptCandidates, proposeFacts } from "./learner.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
 import { factsFor, journeys, norm, type Airlines, type Trip } from "./trip.ts";
@@ -451,6 +451,10 @@ export function createEscalaAgent(
       (locationIsFresh(p.location, Date.parse(messageAt) || Date.now())
         ? ` Where the traveler is (they shared it): ${describeLocation(p.location, trip, Date.parse(messageAt) || Date.now())}. Use it for directions and nearby suggestions, say in a few words how you understood where they are, and never repeat the coordinates. Say only what a location can show (the airport, the area, the place name they picked), never a terminal, floor, side or gate it cannot show. If they only shared it, answer what they last asked that needs it; if the new location shows that question is behind them (they already arrived), don't answer it again: acknowledge where they are and ask in one line what they need there.`
         : " If the traveler asks how to get somewhere nearby or for something close to them and you don't know where they are, ask them to share their location in WhatsApp (clip → Location).") +
+      ((here) =>
+        here
+          ? ` Right now it is ${localClock(Date.parse(messageAt) || Date.now(), here.tz)} in ${here.city}, where the traveler most likely is (${here.why}). Give every time as a clock time, local at its airport, and say which city when it could be confused.`
+          : "")(whereNow(trip, Date.parse(messageAt) || Date.now(), p.location)) +
       " When you call search_travel_info, also write one short line telling the traveler you are looking it up, in your own words and about what they asked, different every time; no figures or questions in it.";
 
     const input: any[] = [...earlier.map((t) => ({ role: t.role, content: t.content })), { role: "user", content: question }];
@@ -565,10 +569,10 @@ export function createEscalaAgent(
         // During the test only the simulated demo flights have data: the flight number is not the problem.
         return { error: "no flight data: during this test flight data is simulated and only the demo trip's flights (ZZ1234, ZZ567) have it. Say so plainly; never suggest the flight number is wrong. The traveler can still ask anything else about the trip, or try the demo trip by saying 'demo'." };
       }
-      const inbound = snap.inboundFlightId ? deps.feed.getFlight(snap.inboundFlightId) : undefined;
+      const inference = inboundInference(snap, inboundChain((id) => deps.feed.getFlight(id), snap));
       const lateMin = arrivalMinutesLate(snap);
-      const inboundMin = inboundDelayMinutes(snap, inbound);
-      for (const n of [lateMin, inboundMin]) if (n) allowed.durations.push(n, Math.round((n / 60) * 10) / 10);
+      const inboundMin = inference?.likelyDepartureDelayMinutes ?? 0;
+      for (const n of [lateMin, inboundMin, inference?.minTurnMinutes]) if (n) allowed.durations.push(n, Math.round((n / 60) * 10) / 10);
       const dz = snap.origin.timezone ?? "UTC";
       const az = snap.destination.timezone ?? "UTC";
       return {
@@ -580,7 +584,16 @@ export function createEscalaAgent(
         arrival: { airport: snap.destination.iata, scheduled: local(snap.arrival.scheduled, az), estimated: local(snap.arrival.estimated, az), actual: local(snap.arrival.actual, az), gate: snap.arrival.gate, terminal: snap.arrival.terminal, baggage_claim: snap.arrival.baggageClaim },
         arrival_minutes_late: lateMin,
         cancelled: snap.cancelled,
-        inbound_aircraft_inference: inboundMin > 0 ? { likely_departure_delay_minutes: inboundMin, note: "inference from the inbound aircraft, not airline data" } : null,
+        aircraft_type: snap.aircraftType,
+        inbound_aircraft_inference: inference
+          ? {
+              likely_departure_delay_minutes: inboundMin,
+              delay_starts_flights_back: inference.hops,
+              turn_minutes_assumed: inference.minTurnMinutes,
+              turn_minutes_source: inference.turnSource,
+              note: "inference from the aircraft's earlier flights, not airline data",
+            }
+          : null,
         airline_announced_delay: (lateMin ?? 0) > 0 || snap.departure.estimated !== snap.departure.scheduled,
       };
     }

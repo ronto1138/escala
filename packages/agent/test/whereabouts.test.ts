@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHECKING, createChecking, describeLocation, locationIsFresh, usableCheckingLine } from "../src/whereabouts.ts";
+import { CHECKING, createChecking, describeLocation, legInstant, localClock, locationIsFresh, usableCheckingLine, whereNow } from "../src/whereabouts.ts";
 
 const trip = { legs: [{ flight: "ZZ567", from: "ORD", to: "YUL", date: "2026-11-02" }] } as any;
 const at = "2026-11-02T18:00:00Z";
@@ -33,5 +33,27 @@ describe("the line said before a search", () => {
     expect(usableCheckingLine("El taxi cuesta 49 dólares")).toBe(false);
     expect(usableCheckingLine("¿Quieres que busque?")).toBe(false);
     expect(usableCheckingLine("")).toBe(false);
+  });
+});
+
+describe("where the traveler is now", () => {
+  const trip = { bookingRef: null, legs: [
+    { flight: "ZZ1234", date: "2026-11-02", from: "AUS", to: "ORD", dep_local: "07:10", arr_local: "09:35" },
+    { flight: "ZZ567", date: "2026-11-02", from: "ORD", to: "YUL", dep_local: "10:30", arr_local: "13:40" },
+  ] };
+  it("reads local airport times as instants, daylight saving included", () => {
+    expect(new Date(legInstant("2026-11-02", "07:10", "AUS")).toISOString()).toBe("2026-11-02T13:10:00.000Z"); // CST, after the change
+    expect(new Date(legInstant("2026-10-28", "07:10", "AUS")).toISOString()).toBe("2026-10-28T12:10:00.000Z"); // CDT
+  });
+  it("follows the itinerary: before, in the air, between flights, after", () => {
+    expect(whereNow(trip, Date.parse("2026-11-02T12:00:00Z"))).toMatchObject({ iata: "AUS", tz: "America/Chicago" });
+    expect(whereNow(trip, Date.parse("2026-11-02T14:00:00Z"))?.why).toMatch(/in the air on ZZ1234/);
+    expect(whereNow(trip, Date.parse("2026-11-02T16:00:00Z"))).toMatchObject({ iata: "ORD", why: expect.stringMatching(/between flights/) });
+    expect(whereNow(trip, Date.parse("2026-11-02T20:00:00Z"))).toMatchObject({ iata: "YUL", tz: "America/Toronto" });
+  });
+  it("prefers a fresh shared location near the trip", () => {
+    const loc = { lat: 41.98, lon: -87.9, at: "2026-11-02T11:55:00Z" };
+    expect(whereNow(trip, Date.parse("2026-11-02T12:00:00Z"), loc)).toMatchObject({ iata: "ORD", why: "from the location they shared" });
+    expect(localClock(Date.parse("2026-11-02T16:00:00Z"), "America/Chicago")).toBe("Mon, Nov 2, 10:00");
   });
 });

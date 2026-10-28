@@ -11,6 +11,10 @@ export interface FlightSnapshot {
   cancelled: boolean;
   diverted: boolean;
   inboundFlightId: string | null;
+  /** ICAO type code (e.g. "A320", "B38M"), IATA when the ICAO code is unknown; null when the provider does not say. */
+  aircraftType: string | null;
+  /** Tail number, when known. A new one means the airline swapped the aircraft. */
+  registration: string | null;
   /** When this snapshot was observed. Every statement made from it carries this time. */
   observedAt: string;
 }
@@ -35,6 +39,8 @@ export interface AeroFlight {
   operator: string | null;
   operator_iata?: string | null;
   inbound_fa_flight_id: string | null;
+  aircraft_type?: string | null;
+  registration?: string | null;
   cancelled: boolean;
   diverted: boolean;
   origin: AeroAirport | null;
@@ -79,5 +85,13 @@ export type FlightEvent =
       inboundArrivalEstimate: string;
       scheduledDeparture: string;
       minTurnMinutes: number;
+      /** Where the turn time comes from: the manufacturer's document for this type, or the default when the type is unknown. */
+      turnSource: string;
+      /** How many flights back the delay starts (1 = the previous flight of this aircraft). */
+      hops: number;
       likelyDepartureDelayMinutes: number;
-    };
+    }
+  /** The earlier inference no longer holds: the aircraft caught up, or the airline put another one on the flight. */
+  | { kind: "inbound_late_cleared"; flightId: string; at: string; inference: true; aircraftChanged: boolean; previousDelayMinutes: number }
+  /** The airline put another aircraft on the flight (new previous flight or new tail number). */
+  | { kind: "aircraft_changed"; flightId: string; at: string; inference: false; likelyDepartureDelayMinutes: number };

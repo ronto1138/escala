@@ -40,12 +40,35 @@ export function changeText(e: FlightEvent, lang: Lang): string | null {
         : { en: `now arrives at gate ${e.to}`, es: `ahora llega a la puerta ${e.to}`, fr: `arrive maintenant à la porte ${e.to}` }[lang];
     case "baggage_claim":
       return { en: `has its bags on belt ${e.belt}`, es: `entrega maletas en la banda ${e.belt}`, fr: `livre les bagages au tapis ${e.belt}` }[lang];
-    case "inbound_late":
+    case "inbound_late": {
+      const m = e.likelyDepartureDelayMinutes;
+      const back = e.hops > 1;
       return {
-        en: `may leave about ${e.likelyDepartureDelayMinutes} min late: the plane coming in is late (my estimate, not the airline's)`,
-        es: `podría salir unos ${e.likelyDepartureDelayMinutes} min tarde: el avión que lo opera viene retrasado (es mi estimación, no un dato de la aerolínea)`,
-        fr: `pourrait partir environ ${e.likelyDepartureDelayMinutes} min en retard : l'avion qui l'assure arrive en retard (c'est mon estimation, pas une information de la compagnie)`,
+        en: `may leave about ${m} min late: the plane that flies it ${back ? "is running late on its earlier flights" : "is late coming in"} (my estimate, not the airline's)`,
+        es: `podría salir unos ${m} min tarde: el avión que lo opera ${back ? "viene arrastrando retraso de vuelos anteriores" : "viene retrasado"} (es mi estimación, no un dato de la aerolínea)`,
+        fr: `pourrait partir environ ${m} min en retard : l'avion qui l'assure ${back ? "accumule du retard sur ses vols précédents" : "arrive en retard"} (c'est mon estimation, pas une information de la compagnie)`,
       }[lang];
+    }
+    case "inbound_late_cleared":
+      return {
+        en: "looks on time again: the plane caught up, so the delay I expected no longer applies (my estimate, not the airline's)",
+        es: "vuelve a verse a tiempo: el avión recuperó el retraso, así que el que te anticipé ya no aplica (es mi estimación, no un dato de la aerolínea)",
+        fr: "semble de nouveau à l'heure : l'avion a rattrapé son retard, celui que je prévoyais ne s'applique plus (c'est mon estimation, pas une information de la compagnie)",
+      }[lang];
+    case "aircraft_changed": {
+      const m = e.likelyDepartureDelayMinutes;
+      return m > 0
+        ? {
+            en: `has a different plane now, and it may still leave about ${m} min late (my estimate, not the airline's)`,
+            es: `ahora lo opera otro avión, y aun así podría salir unos ${m} min tarde (es mi estimación, no un dato de la aerolínea)`,
+            fr: `est maintenant assuré par un autre avion, qui pourrait encore partir environ ${m} min en retard (c'est mon estimation, pas une information de la compagnie)`,
+          }[lang]
+        : {
+            en: "has a different plane now, one that is on time: the delay I expected no longer applies",
+            es: "ahora lo opera otro avión que llega a tiempo: el retraso que te anticipé ya no aplica",
+            fr: "est maintenant assuré par un autre avion, à l'heure : le retard que je prévoyais ne s'applique plus",
+          }[lang];
+    }
   }
 }
 

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { parse } from "yaml";
-import { detect, type DetectorOptions } from "./detector.ts";
+import { detect, inboundChain, type DetectorOptions } from "./detector.ts";
 import { fromAeroFlight } from "./normalize.ts";
 import type { AeroFlight, FlightEvent, FlightSnapshot } from "./types.ts";
 
@@ -87,9 +87,9 @@ export class ReplayFeed implements FlightFeed {
     this.snapshots = next; // commit before notifying, so listeners read the new state
     for (const [id, snap] of next) {
       if (initial) continue;
-      const inboundId = snap.inboundFlightId;
-      const inbound = inboundId ? { curr: next.get(inboundId), prev: old.get(inboundId) } : {};
-      const events = detect(old.get(id), snap, inbound, this.detector);
+      const before = old.get(id);
+      const inbound = { curr: inboundChain((x) => next.get(x), snap), prev: before ? inboundChain((x) => old.get(x), before) : [] };
+      const events = detect(before, snap, inbound, this.detector);
       if (events.length) for (const l of this.listeners) l(events, snap);
     }
   }
