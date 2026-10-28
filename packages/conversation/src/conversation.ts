@@ -54,6 +54,8 @@ export interface Person {
   location?: SharedLocation;
   /** Their WhatsApp profile name, to call them by it now and then; never used to guess anything else about them. */
   name?: string;
+  /** When Escala last called them by name: it does so as rarely as possible. */
+  nameUsedAt?: number;
   /** What they told about the trip around the flights: where they stay, checked bags, a rental car. */
   details?: TripDetails;
   /** What their boarding passes say, by flight ("ZZ1234"): boarding time and gate as printed, seat, group. */

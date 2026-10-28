@@ -57,3 +57,13 @@ describe("where the traveler is now", () => {
     expect(localClock(Date.parse("2026-11-02T16:00:00Z"), "America/Chicago")).toBe("Mon, Nov 2, 10:00");
   });
 });
+
+describe("calling the traveler by name", () => {
+  it("is noticed in any case and with accents, and not inside another word", async () => {
+    const { mentionsName } = await import("../src/agent.ts");
+    expect(mentionsName("¡Listo, Ángel! Buen vuelo.", "Ángel María")).toBe(true);
+    expect(mentionsName("listo, alex", "Alex")).toBe(true);
+    expect(mentionsName("Alexandria is far", "Alex")).toBe(false);
+    expect(mentionsName("Buen vuelo.", undefined)).toBe(false);
+  });
+});

@@ -40,6 +40,17 @@ export interface AgentDeps {
 /** What a shared location becomes for the agent: the place is given separately, in the instructions. */
 const LOCATION_SHARED = "[The traveler just shared their location.]";
 
+/** Whether a reply calls the traveler by their first name (any case, accents included). */
+export function mentionsName(text: string, name: string | undefined): boolean {
+  const first = name?.trim().split(/\s+/)[0];
+  if (!first || first.length < 2) return false;
+  const escaped = first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<!\\p{L})${escaped}(?!\\p{L})`, "iu").test(text);
+}
+
+/** After calling the traveler by name, Escala leaves it for this long: as rarely as possible (Ives, 28-oct). */
+const NAME_REST_MS = 12 * 60 * 60 * 1000;
+
 const PASS_UNREADABLE: Record<Lang, string> = {
   en: "I couldn't read the flight on that boarding pass: try a photo where the flight number is sharp.",
   es: "No pude leer el vuelo en ese pase: intenta una foto donde el número de vuelo se vea nítido.",
@@ -523,7 +534,9 @@ export function createEscalaAgent(
       `You are Escala, a warm, plain-spoken travel companion on WhatsApp, for this traveler's trip only. Reply in ${LANG_NAME[p.lang]}, briefly, like a person who knows travel. ` +
       "Answer only the traveler's latest message: earlier turns are context and were already answered, never repeat them unless asked. " +
       "You don't know the traveler's gender: in Spanish and French never use a gendered word about them (tranquila, atento, bienvenido, prêt, arrivée, @ or o/a forms); rephrase neutrally (\"que tengas buen vuelo\", \"ya en Montreal\", \"bon vol\"). Don't use gendered words about yourself either. " +
-      (p.name ? `Their WhatsApp profile name is "${p.name.replace(/"/g, "")}" (it may be a nickname): use their first name only now and then (a greeting, good news, a moment that matters), at most once every few messages, and never infer anything else from it. ` : "") +
+      (p.name && !(p.nameUsedAt && Date.now() - p.nameUsedAt < NAME_REST_MS)
+        ? `Their WhatsApp profile name is "${p.name.replace(/"/g, "")}" (it may be a nickname). You may use their first name once in this reply only if it is a greeting or a moment that really matters; otherwise don't use it. Never infer anything else from it. `
+        : "Don't call the traveler by name in this reply. ") +
       "Write status words for people, never internal labels: say \"confirmed on <page> on Oct 28\" or \"I could not confirm this\", never VERIFICADO, NO_VERIFICADO, brackets or codes. Give times as local clock times, never UTC. " +
       "Never promise to check something later or to follow up on your own: either answer now with what you have, or say what you could not confirm. " +
       "Use tools for facts; never guess flight status. Never state an amount, percentage, deadline or legal article unless rights_for_trip returned it under 'applies'. " +
@@ -604,7 +617,10 @@ export function createEscalaAgent(
     for (let attempt = 1; attempt <= 2; attempt++) {
       const verdict = verify(text, allowed);
       trace({ kind: "verify", attempt, verdict, draft: text });
-      if (verdict.ok) return forWhatsApp(text);
+    if (verdict.ok) {
+      if (mentionsName(text, p.name)) p.nameUsedAt = Date.now();
+      return forWhatsApp(text);
+    }
       if (attempt === 2) break;
       const r = await deps.client.responses(
         {
