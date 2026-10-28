@@ -468,6 +468,8 @@ export function createEscalaAgent(
       "Answer only the traveler's latest message: earlier turns are context and were already answered, never repeat them unless asked. " +
       "Use tools for facts; never guess flight status. Never state an amount, percentage, deadline or legal article unless rights_for_trip returned it under 'applies'. " +
       "If a right only 'may apply', say what it depends on and ask the single question returned, nothing else. If the inbound aircraft is late, say it is your inference, not airline data; when the airline has not changed its times yet, lead with the likely delay and say the airline has not announced it yet, and never call that flight on time. " +
+      "When a connection crosses a border (immigration, customs, checking bags again, another terminal), never say it is enough or not enough time: say what has to happen in between and that you don't have the airport's official minimum connection time; if it looks short, say it looks tight. " +
+      "When the traveler doesn't say which flight (\"what time should I be at the gate?\"), answer first for the next flight they board, then the other in one line. " +
       "For a connection, check every flight in it with get_flight_status and use the gates and terminals it returns; never ask the traveler to find out what that data already shows. " +
       "Never say what the airline usually does, will do or owes (free rebooking, protected connections) unless rights_for_trip returned it; you can suggest asking for it. " +
       "If an entry's status is not VERIFICADO, say it is not verified. A rule under 'not_in_force_yet' is a reform: say it does not apply yet and from when. " +
@@ -629,7 +631,7 @@ export function createEscalaAgent(
         arrival_minutes_late: lateMin,
         cancelled: snap.cancelled,
         aircraft_type: snap.aircraftType,
-        boarding: boardingFor(snap, dz),
+        boarding: boardingFor(snap, dz, storyNow(trip)),
         inbound_aircraft_inference: inference
           ? {
               likely_departure_delay_minutes: inboundMin,
@@ -797,7 +799,7 @@ export function createEscalaAgent(
 }
 
 /** What the airline publishes about boarding, as local clock times from the best-known departure; null if it publishes nothing. */
-function boardingFor(snap: FlightSnapshot, tz: string) {
+function boardingFor(snap: FlightSnapshot, tz: string, now: number) {
   const r = ruleFor(snap);
   const dep = Date.parse(snap.departure.estimated ?? snap.departure.scheduled ?? "");
   if (!Number.isFinite(dep)) return null;
@@ -812,8 +814,12 @@ function boardingFor(snap: FlightSnapshot, tz: string) {
     };
   }
   const at = (min?: number) => (min ? local(new Date(dep - min * 60_000).toISOString(), tz) : null);
+  const opens = dep - (r.startsMin ?? r.gateByMin ?? 0) * 60_000;
+  const closes = r.closesMin ? dep - r.closesMin * 60_000 : null;
+  const phase = closes !== null && now >= closes ? "gate closed" : r.startsMin && now >= opens ? "boarding now" : r.startsMin ? "boarding has not started yet" : null;
   return {
     published: true,
+    ...(phase ? { right_now: phase } : {}),
     by: r.rule.example ? "example rule of the demo's simulated airline" : r.rule.airline,
     source: r.rule.url || null,
     checked_on: r.rule.checkedOn || null,

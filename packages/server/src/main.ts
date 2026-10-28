@@ -70,14 +70,14 @@ const memory = new MemoryStore({ path: dbPath, crypto });
 const people = new ConversationStore<Person>({ path: dbPath, crypto });
 // Retention is enforced, not just promised: expired facts are deleted at start and every hour.
 const claimDays = longestDeadlineDays(loadEntries());
-const scenario = fileURLToPath(new URL("../../feeds/scenarios/demo-inbound-late.yaml", import.meta.url));
+const scenario = fileURLToPath(new URL("../../feeds/scenarios/demo-mex-ord-yul.yaml", import.meta.url));
 // Flights are simulated (no flight data provider yet): the demo scenario plays in real time, faster than life, from
 // the moment someone confirms a trip with its flights, so changes and their alerts arrive on their own.
 const demoScenario = loadScenario(scenario);
 // The story's events every few seconds, then a faster stretch up to boarding time so the gate reminder comes within minutes.
 const feed = new ReplayClock(demoScenario, {
   secondsPerMinute: Number(env.REPLAY_SECONDS_PER_MINUTE ?? 3),
-  tailMinutes: 90, // stops at minute 180: ZZ1234's reminder is at 170, its boarding at 190
+  tailMinutes: 110, // stops at minute 200: ZZ1234's gate reminder is at 195, its boarding at 210
   tailSecondsPerMinute: Number(env.REPLAY_TAIL_SECONDS_PER_MINUTE ?? 0.5),
 });
 // The demo trip (D48): the scenario's two connecting flights, dated so the story starts when the person asks for it.

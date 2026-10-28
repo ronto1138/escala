@@ -20,7 +20,15 @@ Baseten, is the memory that learns how each traveler likes to travel. Escala is 
 > Privacy policy: https://escala-production-e918.up.railway.app/privacy.
 
 **Simulated flights.** During the hackathon, flight data comes from synthetic scenarios replayed in real time (flight
-numbers ZZ1234 and ZZ567); no live flight data provider is connected.
+numbers ZZ1234 and ZZ567); no live flight data provider is connected. The demo trip runs on a real route, Mexico City to
+Montreal through Chicago O'Hare, with a fictitious airline, example times and invented events; airports, time zones
+and the border rules of the connection are real and cited.
+
+**Following the aircraft, documents and boarding.** Escala follows the plane up to three flights back to foresee a
+delay before the airline posts it, using the manufacturer's published minimum turn time for each aircraft type, and
+says so when the plane is swapped or catches up. For a trip that crosses borders it asks which passport the traveler
+flies with and tells what each country on the route asks, connection included, from official pages with the date read.
+It reminds the traveler to head to the gate with what the airline publishes, or a typical range said as such.
 
 **Test phase.** Escala answers only invited numbers. The Kokorio team reads test conversations to improve Escala, and
 Meta may use them while the event's free credits are used. Use made-up details. Conversations are sealed with a

@@ -66,7 +66,9 @@ export function parseNumber(raw: string): number {
   return Number(`${s.slice(0, last).replace(/[.,]/g, "")}.${s.slice(last + 1)}`);
 }
 
-export function extractClaims(text: string): Claim[] {
+export function extractClaims(raw: string): Claim[] {
+  // A clock time is not a duration: "13:50 hora de Chicago" must not read as "50 horas". Same length, so positions hold.
+  const text = raw.replace(/\b(\d{1,2}):(\d{2})\b/g, (m) => "#".repeat(m.length));
   const claims: Claim[] = [];
   const seen = new Set<string>();
   const push = (c: Claim, start: number) => {

@@ -1,0 +1,75 @@
+# SIMULATED DATA. Fictitious airline ZZ on a real route: Mexico City -> Chicago O'Hare -> Montreal. Airports, time zones
+# and the connection's border rules are real; flight numbers, times, gates, aircraft and events are invented and are
+# labelled "simulated" wherever they are shown. At O'Hare an international arrival goes through US immigration and
+# customs before connecting, so the connection time matters more than the clock suggests. AeroAPI v4 flight shape.
+name: demo-mex-ord-yul
+start: "2026-11-02T11:00:00Z"
+flights:
+  - &base
+    ident: ZZ1233
+    ident_iata: ZZ1233
+    fa_flight_id: ZZ1233-20261102-replay-0001
+    operator: ZZ
+    operator_iata: ZZ
+    inbound_fa_flight_id: null
+    aircraft_type: A320
+    registration: ZZ-SIM01 # fictitious: never a real tail number
+    cancelled: false
+    diverted: false
+    origin: { code: MMUN, code_icao: MMUN, code_iata: CUN, timezone: America/Cancun }
+    destination: { code: MMMX, code_icao: MMMX, code_iata: MEX, timezone: America/Mexico_City }
+    gate_origin: B8
+    gate_destination: "75"
+    terminal_origin: "3"
+    terminal_destination: "1"
+    baggage_claim: null
+    scheduled_out: "2026-11-02T10:30:00Z"
+    estimated_out: "2026-11-02T10:30:00Z"
+    actual_out: null
+    scheduled_in: "2026-11-02T13:00:00Z"
+    estimated_in: "2026-11-02T13:00:00Z"
+    actual_in: null
+  - <<: *base
+    ident: ZZ1234
+    ident_iata: ZZ1234
+    fa_flight_id: ZZ1234-20261102-replay-0002
+    inbound_fa_flight_id: ZZ1233-20261102-replay-0001
+    origin: { code: MMMX, code_icao: MMMX, code_iata: MEX, timezone: America/Mexico_City }
+    destination: { code: KORD, code_icao: KORD, code_iata: ORD, timezone: America/Chicago }
+    gate_origin: "75"
+    gate_destination: M11
+    terminal_origin: "1"
+    terminal_destination: "5"
+    scheduled_out: "2026-11-02T14:00:00Z"
+    estimated_out: "2026-11-02T14:00:00Z"
+    scheduled_in: "2026-11-02T18:15:00Z"
+    estimated_in: "2026-11-02T18:15:00Z"
+  - <<: *base
+    ident: ZZ567
+    ident_iata: ZZ567
+    fa_flight_id: ZZ567-20261102-replay-0003
+    inbound_fa_flight_id: null
+    registration: ZZ-SIM02
+    origin: { code: KORD, code_icao: KORD, code_iata: ORD, timezone: America/Chicago }
+    destination: { code: CYUL, code_icao: CYUL, code_iata: YUL, timezone: America/Toronto }
+    gate_origin: null # assigned at minute 75
+    gate_destination: "52"
+    terminal_origin: "2"
+    terminal_destination: null
+    scheduled_out: "2026-11-02T20:45:00Z"
+    estimated_out: "2026-11-02T20:45:00Z"
+    scheduled_in: "2026-11-02T23:00:00Z"
+    estimated_in: "2026-11-02T23:00:00Z"
+steps:
+  - minute: 20 # the aircraft coming from Cancun leaves late
+    patch:
+      ZZ1233-20261102-replay-0001: { estimated_out: "2026-11-02T12:18:00Z", estimated_in: "2026-11-02T14:48:00Z" }
+  - minute: 60 # the airline updates the Mexico City departure
+    patch:
+      ZZ1234-20261102-replay-0002: { estimated_out: "2026-11-02T15:10:00Z", estimated_in: "2026-11-02T19:25:00Z" }
+  - minute: 75 # the Montreal connection gets its departure gate
+    patch:
+      ZZ567-20261102-replay-0003: { gate_origin: E5 }
+  - minute: 90 # gate change in Mexico City
+    patch:
+      ZZ1234-20261102-replay-0002: { gate_origin: "77" }

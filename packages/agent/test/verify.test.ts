@@ -157,3 +157,11 @@ describe("links", () => {
     expect(verify("It costs 20% more https://example.com", none).ok).toBe(false);
   });
 });
+
+describe("clock times", () => {
+  it("are not durations, in any language", () => {
+    expect(extractClaims("Empieza 13:50 hora de Ciudad de México y cierra 20:05 hora de Chicago.")).toEqual([]);
+    expect(extractClaims("boarding at 7:55 hours local")).toEqual([]);
+    expect(extractClaims("about 50 hours late").map((c) => c.value)).toEqual([50]);
+  });
+});

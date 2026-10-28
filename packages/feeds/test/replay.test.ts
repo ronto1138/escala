@@ -65,3 +65,18 @@ describe("quiet scenario", () => {
     expect(events).toEqual([]);
   });
 });
+
+describe("demo scenario: Mexico City to Montreal through O'Hare", () => {
+  it("foresees the delay from the aircraft coming from Cancun before the airline says so", () => {
+    const feed = new ReplayFeed(scenario("demo-mex-ord-yul"));
+    const events = collect(feed);
+    feed.advanceTo(20);
+    expect(events).toContainEqual(expect.objectContaining({ kind: "inbound_late", likelyDepartureDelayMinutes: 70, minTurnMinutes: 22, inference: true }));
+    events.length = 0;
+    feed.advanceTo(60);
+    expect(events).toContainEqual(expect.objectContaining({ kind: "arrival_delay_change", minutesLate: 70, inference: false }));
+    events.length = 0;
+    feed.advanceTo(90);
+    expect(events.map((e) => e.kind)).toEqual(["gate_change", "gate_change"]); // the connection's gate, then the change in Mexico City
+  });
+});
