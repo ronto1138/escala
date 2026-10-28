@@ -169,6 +169,8 @@ const queues = new Map<string, Promise<void>>();
 const pending = new Map<string, number>();
 const turnedAway = new Set<string>();
 const deliver = (incoming: InboundMessage) => {
+  // The window opens on arrival: the test notice and the not-enrolled reply go out before the conversation sees the message.
+  channel.noteInbound(incoming.from, Date.parse(incoming.at) || Date.now());
   let m = incoming;
   let notice = false;
   if (!testers.allowed(m.from)) {
