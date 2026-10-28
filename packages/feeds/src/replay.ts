@@ -23,6 +23,8 @@ export interface FlightFeed {
   getFlight(flightId: string): FlightSnapshot | undefined;
   findByIdent(ident: string): FlightSnapshot | undefined;
   getInbound(flightId: string): FlightSnapshot | undefined;
+  /** The feed's clock: for a replay, the story's time; absent for live data (use the real clock). */
+  now?(): number;
   subscribe(cb: (events: FlightEvent[], snapshot: FlightSnapshot) => void): () => void;
 }
 
@@ -61,6 +63,10 @@ export class ReplayFeed implements FlightFeed {
 
   getFlight(flightId: string) {
     return this.snapshots.get(flightId);
+  }
+
+  now() {
+    return Date.parse(this.timeAt(Math.max(0, this.minute)));
   }
 
   /** Latest observation of a flight by its number, e.g. "ZZ1234" or "ZZ 1234". */

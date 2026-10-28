@@ -9,6 +9,8 @@ flights:
     operator: ZZ
     operator_iata: ZZ
     inbound_fa_flight_id: null
+    aircraft_type: A320
+    registration: ZZ-SIM01 # fictitious: never a real tail number
     cancelled: false
     diverted: false
     origin: { code: KDEN, code_icao: KDEN, code_iata: DEN, timezone: America/Denver }
@@ -55,7 +57,7 @@ flights:
 steps:
   - minute: 20 # the inbound aircraft leaves Denver late
     patch:
-      ZZ1233-20261102-replay-0001: { estimated_out: "2026-11-02T11:50:00Z", estimated_in: "2026-11-02T14:05:00Z" }
+      ZZ1233-20261102-replay-0001: { estimated_out: "2026-11-02T12:13:00Z", estimated_in: "2026-11-02T14:28:00Z" }
   - minute: 60 # the airline updates the Austin departure
     patch:
       ZZ1234-20261102-replay-0002: { estimated_out: "2026-11-02T14:50:00Z", estimated_in: "2026-11-02T17:15:00Z" }

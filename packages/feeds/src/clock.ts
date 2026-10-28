@@ -2,6 +2,15 @@ import type { DetectorOptions } from "./detector.ts";
 import { ReplayFeed, type FlightFeed, type Scenario } from "./replay.ts";
 import type { FlightEvent, FlightSnapshot } from "./types.ts";
 
+export interface ReplayClockOptions {
+  secondsPerMinute: number;
+  detector?: DetectorOptions;
+  /** Minutes the story keeps running after its last step (nothing changes, but the clock moves toward boarding). */
+  tailMinutes?: number;
+  /** Pace of that stretch; defaults to `secondsPerMinute`. */
+  tailSecondsPerMinute?: number;
+}
+
 /**
  * Plays a scenario in real time, faster than life: one scenario minute every `secondsPerMinute` seconds. `restart()`
  * starts it again from minute 0, so each demo run sees the same story. Listeners stay subscribed across restarts.
@@ -15,9 +24,9 @@ export class ReplayClock implements FlightFeed {
   private readonly scenario: Scenario;
   /** The scenario as last started: moved in time so it begins when someone starts the demo. */
   private current: Scenario;
-  private readonly opts: { secondsPerMinute: number; detector?: DetectorOptions };
+  private readonly opts: ReplayClockOptions;
 
-  constructor(scenario: Scenario, opts: { secondsPerMinute: number; detector?: DetectorOptions }) {
+  constructor(scenario: Scenario, opts: ReplayClockOptions) {
     this.scenario = scenario;
     this.current = scenario;
     this.opts = opts;
@@ -36,12 +45,27 @@ export class ReplayClock implements FlightFeed {
     this.feed = this.fresh();
     this.minute = 0;
     const last = Math.max(0, ...this.current.steps.map((s) => s.minute));
-    this.timer = setInterval(() => {
-      this.minute++;
-      this.feed.advanceTo(this.minute);
-      if (this.minute >= last) this.stop();
-    }, this.opts.secondsPerMinute * 1000);
-    this.timer.unref?.();
+    const end = last + (this.opts.tailMinutes ?? 0);
+    const tick = (ms: number, until: number, then?: () => void) => {
+      this.timer = setInterval(() => {
+        this.minute++;
+        this.feed.advanceTo(this.minute);
+        if (this.minute >= until) {
+          this.stop();
+          then?.();
+        }
+      }, ms);
+      this.timer.unref?.();
+    };
+    // The story's events at the demo pace, then the quiet stretch up to boarding faster, so the reminder comes soon.
+    tick(this.opts.secondsPerMinute * 1000, last, () => {
+      if (end > last) tick((this.opts.tailSecondsPerMinute ?? this.opts.secondsPerMinute) * 1000, end);
+    });
+  }
+
+  /** The story's time: minute 0 is when it was started. */
+  now() {
+    return this.feed.now();
   }
 
   stop() {
