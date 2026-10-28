@@ -1,6 +1,7 @@
 import type { OutboundMessage, ParticipantId } from "@escala/channel";
 import type { Lang, Person } from "@escala/conversation";
-import { ruleFor, remindAt, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
+import { legInstant } from "@escala/agent";
+import { international, ruleFor, remindAt, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
 import { TEMPLATE, TEMPLATE_LANG } from "./notifier.ts";
 
 export { BOARDING, remindAt, ruleFor, type BoardingRule } from "@escala/feeds";
@@ -27,7 +28,7 @@ function clock(ms: number, tz: string | null): string {
 }
 
 /** The sentence after "flight ZZ 1234 …": departure, gate, and what the airline published, in local time. */
-export function boardingText(s: FlightSnapshot, lang: Lang, city: string): string {
+export function boardingText(s: FlightSnapshot, lang: Lang, city: string, pass?: { boardingTime?: string; gate?: string }): string {
   const dep = Date.parse(s.departure.estimated ?? s.departure.scheduled ?? "");
   const tz = s.origin.timezone;
   const at = (min: number) => clock(dep - min * 60_000, tz);
@@ -37,7 +38,16 @@ export function boardingText(s: FlightSnapshot, lang: Lang, city: string): strin
   parts.en.push(`leaves at ${clock(dep, tz)} (${city} time)${gate ? ` from gate ${gate}` : ", no gate yet; I'll tell you when it has one"}`);
   parts.es.push(`sale a las ${clock(dep, tz)} (hora de ${city})${gate ? ` por la puerta ${gate}` : ", todavía sin puerta; te aviso en cuanto la tenga"}`);
   parts.fr.push(`part à ${clock(dep, tz)} (heure de ${city})${gate ? `, porte ${gate}` : ", pas encore de porte ; je vous préviens dès qu'elle est connue"}`);
-  if (r) {
+  if (pass?.boardingTime) {
+    parts.en.push(`Your boarding pass says boarding starts at ${pass.boardingTime}`);
+    parts.es.push(`Tu pase dice que el abordaje empieza a las ${pass.boardingTime}`);
+    parts.fr.push(`Votre carte indique un embarquement à ${pass.boardingTime}`);
+    if (pass.gate && gate && pass.gate !== gate) {
+      parts.en.push(`The pass says gate ${pass.gate}, but it is now ${gate}`);
+      parts.es.push(`El pase dice puerta ${pass.gate}, pero ahora es la ${gate}`);
+      parts.fr.push(`La carte indique la porte ${pass.gate}, mais c'est maintenant la ${gate}`);
+    }
+  } else if (r) {
     const said: Record<Lang, string[]> = { en: [], es: [], fr: [] };
     if (r.startsMin && r.startsLatestMin) {
       said.en.push(`boarding starts between ${at(r.startsMin)} and ${at(r.startsLatestMin)}`);
@@ -71,6 +81,27 @@ export function boardingText(s: FlightSnapshot, lang: Lang, city: string): strin
   return parts[lang].join(". ");
 }
 
+/** Before check-in: photos of the bag and, after, of the tag, so anything that happens later can be shown. */
+export function checkinText(lang: Lang, checkedBags: number | undefined): string {
+  const unknown = checkedBags === undefined;
+  return {
+    en: `🧳 ${unknown ? "If you check a bag: before" : "Before"} you hand it over, take a photo of it, and after check-in one of the tag sticker they give you, and send them here. I keep them as evidence with the time, in case anything happens on the way.`,
+    es: `🧳 ${unknown ? "Si vas a documentar maleta: antes" : "Antes"} de entregarla, tómale una foto, y después de documentar otra a la etiqueta que te den, y mándamelas aquí. Las guardo como evidencia con la hora, por si algo pasa en el camino.`,
+    fr: `🧳 ${unknown ? "Si vous enregistrez un bagage : avant" : "Avant"} de le remettre, prenez-le en photo, puis après l'enregistrement l'étiquette qu'on vous donne, et envoyez-les ici. Je les garde comme preuve avec l'heure, au cas où.`,
+  }[lang];
+}
+
+/** Check-in reminder this long before the first flight's scheduled departure (international, domestic). */
+const CHECKIN_LEAD_MIN = { international: 150, domestic: 100 };
+
+/** A boarding time printed on the pass ("13:25"), as an instant on the departure's local day. */
+function passInstant(time: string, s: FlightSnapshot, dep: number): number {
+  const tz = s.origin.timezone ?? "UTC";
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(dep)).map((x) => [x.type, x.value]));
+  const at = s.origin.iata ? legInstant(`${p.year}-${p.month}-${p.day}`, time, s.origin.iata) : NaN;
+  return Number.isFinite(at) && at > dep ? at - 24 * 60 * 60 * 1000 : at;
+}
+
 const OPEN: Record<Lang, (flight: string, body: string) => string> = {
   en: (f, b) => `🛫 Time to head to your gate: flight ${f} ${b}.`,
   es: (f, b) => `🛫 Ya es buen momento para irte acercando a tu puerta: el vuelo ${f} ${b}.`,
@@ -85,41 +116,59 @@ const SIMULATED: Record<Lang, string> = { en: "(simulated flight data)", es: "(d
 export function createBoardingReminders(deps: BoardingDeps) {
   const told = new Set<string>();
   const sending = new Set<string>();
+  const send = async (key: string, p: Person, m: OutboundMessage, event: string, extra: Record<string, unknown>) => {
+    if (sending.has(key)) return;
+    sending.add(key);
+    try {
+      await deps.send(p.id, m);
+      told.add(key); // only once it went out: a failed send is tried again on the next tick
+      if (told.size > 50_000) told.delete(told.values().next().value!);
+      deps.log?.({ event, via: m.kind, ...extra });
+    } catch (err) {
+      deps.log?.({ event: `${event}_failed`, error: String(err).slice(0, 160) });
+    } finally {
+      sending.delete(key);
+    }
+  };
   return async function tick(): Promise<void> {
     const now = deps.feed.now?.() ?? Date.now();
     for (const p of deps.people()) {
       if (p.stage !== "ready") continue;
       const legs = ((p.trip as { legs?: Array<{ flight: string }> } | undefined)?.legs ?? []).map((l) => deps.feed.findByIdent(l.flight));
+      const open = deps.windowOpen(p.id);
+
+      // Before check-in at the start of the trip, unless they said they carry everything on.
+      const first = legs[0];
+      const sched = first ? Date.parse(first.departure.scheduled ?? "") : NaN;
+      if (first && Number.isFinite(sched) && p.details?.checkedBags !== 0 && open) {
+        const key = `${p.id}|${first.flightId}|checkin`;
+        const lead = international(first) ? CHECKIN_LEAD_MIN.international : CHECKIN_LEAD_MIN.domestic;
+        if (!told.has(key) && now >= sched - lead * 60_000 && now < sched - 45 * 60_000) {
+          await send(key, p, { kind: "text", text: checkinText(p.lang, p.details?.checkedBags) }, "checkin_reminder", {});
+        }
+      }
+
       for (let i = 0; i < legs.length; i++) {
         const s = legs[i];
         if (!s || s.cancelled || s.departure.actual) continue;
         const key = `${p.id}|${s.flightId}`;
         if (told.has(key)) continue;
-        const at = remindAt(s);
         const dep = Date.parse(s.departure.estimated ?? s.departure.scheduled ?? "");
+        const pass = p.boardingPasses?.[norm(s.ident)];
+        const printed = pass?.boardingTime ? passInstant(pass.boardingTime, s, dep) : NaN;
+        // The pass's own boarding time beats any rule: remind a quarter of an hour before it.
+        const at = Number.isFinite(printed) ? printed - 15 * 60_000 : remindAt(s);
         if (at === null || now < at || now >= dep) continue;
         const before = legs[i - 1];
         const lands = before ? Date.parse(before.arrival.actual ?? before.arrival.estimated ?? before.arrival.scheduled ?? "") : NaN;
         if (Number.isFinite(lands) && lands > now) continue; // still in the air on the flight before
-        if (sending.has(key)) continue;
         const city = (s.origin.iata && deps.cityOf?.(s.origin.iata, p.lang)) || s.origin.iata || "";
-        const body = boardingText(s, p.lang, city);
+        const body = boardingText(s, p.lang, city, Number.isFinite(printed) ? pass : undefined);
         const flight = pretty(norm(s.ident));
-        const open = deps.windowOpen(p.id);
         const m: OutboundMessage = open
           ? { kind: "text", text: `${OPEN[p.lang](flight, body)}${s.source === "replay" ? ` ${SIMULATED[p.lang]}` : ""}` }
           : { kind: "template", name: TEMPLATE, language: TEMPLATE_LANG[p.lang], bodyParams: [flight, body] };
-        sending.add(key);
-        try {
-          await deps.send(p.id, m);
-          told.add(key); // only once it went out: a failed send is tried again on the next tick
-          if (told.size > 50_000) told.delete(told.values().next().value!);
-          deps.log?.({ event: "boarding_reminder", via: open ? "text" : "template", published: Boolean(ruleFor(s)) });
-        } catch (err) {
-          deps.log?.({ event: "boarding_reminder_failed", error: String(err).slice(0, 160) });
-        } finally {
-          sending.delete(key);
-        }
+        await send(key, p, m, "boarding_reminder", { published: Boolean(ruleFor(s)), from_pass: Number.isFinite(printed) });
       }
     }
   };

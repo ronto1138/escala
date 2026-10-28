@@ -5,7 +5,7 @@ import { outputText, type MetaClient, type OpenModelClient } from "@escala/meta-
 import { ConsentError, tripRetention, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
 import { forWhatsApp, legLine } from "./format.ts";
-import { evidenceReply, readEvidence, type EvidenceObject } from "./evidence.ts";
+import { evidenceReply, readBoardingPass, readEvidence, type EvidenceObject } from "./evidence.ts";
 import { convertUnits, mapsLink, RIGHTS_TOPIC, searchTravel, UNIT_NAMES, type createRates } from "./guide.ts";
 import { crossesBorder, documentsFor, passportFromStatement } from "./documents.ts";
 import { createChecking, describeLocation, legInstant, localClock, locationIsFresh, usableCheckingLine, whereNow } from "./whereabouts.ts";
@@ -39,6 +39,12 @@ export interface AgentDeps {
 
 /** What a shared location becomes for the agent: the place is given separately, in the instructions. */
 const LOCATION_SHARED = "[The traveler just shared their location.]";
+
+const PASS_UNREADABLE: Record<Lang, string> = {
+  en: "I couldn't read the flight on that boarding pass: try a photo where the flight number is sharp.",
+  es: "No pude leer el vuelo en ese pase: intenta una foto donde el número de vuelo se vea nítido.",
+  fr: "Je n'ai pas pu lire le vol sur cette carte : essayez une photo où le numéro de vol est net.",
+};
 
 /** What a confirmed cross-border trip becomes for the agent when the passport is already known. */
 const DOCUMENTS_BRIEF = "[The trip was just confirmed and their passport is known: tell what each country on the route asks of it.]";
@@ -119,6 +125,24 @@ const TOOLS = [
       properties: {
         country: { type: "string", description: "ISO 3166-1 alpha-2 code of the passport's country, e.g. MX, US, CA, FR" },
         quote: { type: "string", description: "the traveler's own words" },
+      },
+    },
+    strict: true,
+  },
+  {
+    type: "function",
+    name: "set_trip_details",
+    description: "Writes down what the traveler tells about the trip around the flights: where they stay, checked bags and their weight, a rental car. Fields they did not mention are null.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["stay", "stay_address", "checked_bags", "bag_kg", "rental_car"],
+      properties: {
+        stay: { type: ["string", "null"], description: "hotel or place name at the destination" },
+        stay_address: { type: ["string", "null"], description: "its address as they gave it" },
+        checked_bags: { type: ["integer", "null"], description: "how many bags they check; 0 = carry-on only" },
+        bag_kg: { type: ["number", "null"], description: "weight of the checked bag in kg (convert from lb with convert first)" },
+        rental_car: { type: ["string", "null"], description: "rental company name; 'yes' if renting without saying which; 'no' if not renting" },
       },
     },
     strict: true,
@@ -352,8 +376,10 @@ export function createEscalaAgent(
     const earlier = Object.fromEntries(
       earlierFacts.map(([o, f]) => [o, { description: f.statement, visibleDamage: ((f.data?.visibleDamage as string[]) ?? []) }]),
     );
-    const reading = await readEvidence(deps.client, await deps.media.dataUrl(m.mediaId, m.mimeType), p.lang, earlier);
+    const image = await deps.media.dataUrl(m.mediaId, m.mimeType);
+    const reading = await readEvidence(deps.client, image, p.lang, earlier);
     trace({ kind: "tool", name: "evidence", args: { object: reading.object }, result: { damage: reading.visibleDamage.length, marks: reading.marks, new: reading.newDamage ?? null } });
+    if (reading.object === "boarding_pass") return boardingPass(image, p, trip);
     if (reading.object === "other") return NOT_EVIDENCE[p.lang];
     const object = reading.object as EvidenceObject;
     const before = earlierFacts.find(([o]) => o === object)?.[1];
@@ -362,12 +388,42 @@ export function createEscalaAgent(
         scope: "trip",
         topic: `evidence.${object}`,
         statement: reading.description,
-        data: { visibleDamage: reading.visibleDamage, newDamage: reading.newDamage ?? null, marks: reading.marks, photoSha256: reading.photoSha256 },
+        data: { visibleDamage: reading.visibleDamage, newDamage: reading.newDamage ?? null, marks: reading.marks, photoSha256: reading.photoSha256, ...(reading.tagNumber ? { tagNumber: reading.tagNumber } : {}) },
         source: { kind: "document", ref: m.id, at: m.at },
         expiresAt: tripFactExpiry(trip, m.at, longestClaimDays),
       });
     }
-    return evidenceReply({ ...reading, object }, p.lang, m.at, before?.source.at);
+    return evidenceReply({ ...reading, object }, p.lang, m.at, before?.source.at, whereNow(trip, storyNow(trip), p.location, liveTimes)?.tz);
+  }
+
+  /** A boarding pass: its boarding time, gate, seat and group are kept for that flight and checked against the feed. */
+  async function boardingPass(image: string, p: Person, trip: Trip): Promise<string> {
+    const bp = await readBoardingPass(deps.client, image);
+    trace({ kind: "tool", name: "boarding_pass", args: {}, result: { flight: bp.flight, boarding: Boolean(bp.boardingTime), gate: Boolean(bp.gate) } });
+    if (!bp.flight) return PASS_UNREADABLE[p.lang];
+    const flight = norm(bp.flight);
+    p.boardingPasses = { ...(p.boardingPasses ?? {}), [flight]: { ...(bp.boardingTime ? { boardingTime: bp.boardingTime } : {}), ...(bp.gate ? { gate: bp.gate } : {}), ...(bp.seat ? { seat: bp.seat } : {}), ...(bp.group ? { group: bp.group } : {}), ...(bp.date ? { date: bp.date } : {}) } };
+    if (!p.name && bp.givenName) p.name = bp.givenName[0]!.toUpperCase() + bp.givenName.slice(1).toLowerCase();
+    const inTrip = trip.legs.some((l) => norm(l.flight) === flight);
+    const snap = deps.feed.findByIdent(flight);
+    const L = p.lang;
+    const pretty = flight.replace(/^([A-Z0-9]{2})(\d+)$/, "$1 $2");
+    const parts = [
+      { en: `🎫 Your boarding pass for ${pretty}`, es: `🎫 Tu pase de abordar del ${pretty}`, fr: `🎫 Votre carte d'embarquement du ${pretty}` }[L] +
+        [
+          bp.boardingTime && { en: `boarding ${bp.boardingTime}`, es: `abordaje ${bp.boardingTime}`, fr: `embarquement ${bp.boardingTime}` }[L],
+          bp.gate && { en: `gate ${bp.gate}`, es: `puerta ${bp.gate}`, fr: `porte ${bp.gate}` }[L],
+          bp.seat && { en: `seat ${bp.seat}`, es: `asiento ${bp.seat}`, fr: `siège ${bp.seat}` }[L],
+          bp.group && { en: `group ${bp.group}`, es: `grupo ${bp.group}`, fr: `groupe ${bp.group}` }[L],
+        ].filter(Boolean).map((x) => `, ${x}`).join("") + ".",
+    ];
+    if (!inTrip) parts.push({ en: "That flight is not in this trip; tell me if I should add it.", es: "Ese vuelo no está en este viaje; dime si lo agrego.", fr: "Ce vol n'est pas dans ce voyage ; dites-moi s'il faut l'ajouter." }[L]);
+    const live = snap?.departure.gate;
+    if (!bp.gate) parts.push(live ? { en: `The pass shows no gate; the latest gate is ${live}.`, es: `El pase no trae puerta; la más reciente es la ${live}.`, fr: `La carte n'indique pas de porte ; la dernière connue est la ${live}.` }[L] : { en: "The pass shows no gate yet: I'll tell you when it has one.", es: "El pase todavía no trae puerta: te aviso en cuanto la asignen.", fr: "La carte n'indique pas encore de porte : je vous préviens dès qu'elle est attribuée." }[L]);
+    else if (live && live !== bp.gate) parts.push({ en: `Heads up: the pass says gate ${bp.gate}, but the gate is now ${live}.`, es: `Ojo: el pase dice puerta ${bp.gate}, pero ahora es la ${live}.`, fr: `Attention : la carte indique la porte ${bp.gate}, mais c'est maintenant la ${live}.` }[L]);
+    if (snap?.source === "replay") parts.push({ en: "(simulated flight data)", es: "(datos de vuelo simulados)", fr: "(données de vol simulées)" }[L]);
+    parts.push({ en: "I keep these details, not the photo or its barcode.", es: "Guardo estos datos, no la foto ni su código de barras.", fr: "Je garde ces informations, pas la photo ni son code-barres." }[L]);
+    return parts.join("\n");
   }
 
   /** Proposes facts from the traveler's own words (Muse Spark Open) and keeps only what passes the code's rules. */
@@ -491,6 +547,11 @@ export function createEscalaAgent(
       "Never present something from the web as certain. Use convert for currencies and measures; currency results are reference rates of the date it gives, not what a bank charges. " +
       `Trip: ${tripText}.` +
       (crossesBorder(trip) ? ` Passport they fly with: ${p.passport ?? "not known yet (ask only if documents come up and it is your one question)"}.` : "") +
+      ` Around the flights: ${tripDetailsText(p)}.` +
+      (p.boardingPasses && Object.keys(p.boardingPasses).length ? ` Their boarding passes say: ${JSON.stringify(p.boardingPasses)}; a pass's boarding time beats any airline rule.` : "") +
+      " When you tell the documents for the first time, end by asking in one short message what is still unknown of: where they stay at the destination (name and address: immigration forms ask for it), whether they check a bag, and whether they rent a car; save what they answer with set_trip_details. " +
+      "If they check a bag, before check-in suggest a photo of the bag and, after, of the tag sticker; if they say what it weighs, save it. If they rent a car, when they land tell them where the rental counters are (search_travel_info) and to photograph the car before driving off. " +
+      "When they land where they stay, give the way to it with maps_link from the airport. When they will fill an immigration or customs form, remind them of the stay's address. " +
       (deps.memory
         ? ` When the traveler shares a useful habit or preference, call remember with their own words: scope "profile" for habits and preferences that matter on future trips${p.share === "profile" ? "" : " (they have not turned that on, so use \"trip\")"}, scope "trip" for what only matters now.`
         : "") +
@@ -636,6 +697,7 @@ export function createEscalaAgent(
         cancelled: snap.cancelled,
         aircraft_type: snap.aircraftType,
         boarding: boardingFor(snap, dz, storyNow(trip)),
+        their_boarding_pass: p.boardingPasses?.[norm(snap.ident)] ?? null,
         inbound_aircraft_inference: inference
           ? {
               likely_departure_delay_minutes: inboundMin,
@@ -667,6 +729,23 @@ export function createEscalaAgent(
         }
       }
       return { saved: country, remembered_for_future_trips: remembered };
+    }
+    if (name === "set_trip_details") {
+      const d = { ...(p.details ?? {}) };
+      const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? scrub(v.trim()).slice(0, max) : undefined);
+      const stay = text(args.stay, 80);
+      const address = text(args.stay_address, 160);
+      if (stay) d.stay = stay;
+      if (address) d.stayAddress = address;
+      if (Number.isInteger(args.checked_bags) && args.checked_bags >= 0 && args.checked_bags <= 9) d.checkedBags = args.checked_bags;
+      if (typeof args.bag_kg === "number" && args.bag_kg > 0 && args.bag_kg < 100) {
+        d.bagKg = Math.round(args.bag_kg * 10) / 10;
+        allowed.weights = [...(allowed.weights ?? []), d.bagKg];
+      }
+      const car = text(args.rental_car, 40);
+      if (car) d.rentalCar = /^no$/i.test(car) ? null : /^yes$/i.test(car) ? "" : car;
+      p.details = d;
+      return { saved: d };
     }
     if (name === "documents_for_trip") {
       if (!p.passport) return { error: "passport unknown: ask which passport they fly with" };
@@ -800,6 +879,14 @@ export function createEscalaAgent(
       }
     },
   };
+}
+
+/** What the traveler told about the trip around the flights, for the instructions. */
+function tripDetailsText(p: Person): string {
+  const d = p.details ?? {};
+  const bags = d.checkedBags === undefined ? "unknown" : d.checkedBags === 0 ? "carry-on only" : `${d.checkedBags} checked${d.bagKg ? `, ${d.bagKg} kg` : ""}`;
+  const car = d.rentalCar === undefined ? "unknown" : d.rentalCar === null ? "no rental car" : d.rentalCar ? `rents with ${d.rentalCar}` : "rents a car (company unknown)";
+  return `stay ${d.stay ? `${d.stay}${d.stayAddress ? `, ${d.stayAddress}` : " (address unknown)"}` : "unknown"}; bags ${bags}; ${car}`;
 }
 
 /** What the airline publishes about boarding, as local clock times from the best-known departure; null if it publishes nothing. */

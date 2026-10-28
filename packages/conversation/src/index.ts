@@ -9,6 +9,7 @@ export {
   type PersonStore,
   type Route,
   type SharedLocation,
+  type TripDetails,
   type Turn,
   type ShareLevel,
   type Stage,

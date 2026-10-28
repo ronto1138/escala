@@ -10,10 +10,12 @@ import { scrub } from "./agent.ts";
  * the photo itself is not stored, so the traveler is asked to keep the original.
  */
 
-export type EvidenceObject = "bag" | "car";
+export type EvidenceObject = "bag" | "bag_tag" | "car";
 
 export interface EvidenceReading {
-  object: EvidenceObject | "other";
+  object: EvidenceObject | "boarding_pass" | "other";
+  /** The bag tag number printed on a bag tag (what an airline asks for in a claim). */
+  tagNumber?: string;
   description: string;
   visibleDamage: string[];
   /** Only when compared with an earlier photo of the same object. */
@@ -28,9 +30,14 @@ export interface EvidenceReading {
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["object", "description", "visible_damage", "new_damage"],
+  required: ["object", "description", "visible_damage", "new_damage", "tag_number"],
   properties: {
-    object: { type: "string", enum: ["bag", "car", "other"], description: "bag = suitcase or checked bag; car = a vehicle" },
+    object: {
+      type: "string",
+      enum: ["bag", "bag_tag", "car", "boarding_pass", "other"],
+      description: "bag = suitcase or checked bag; bag_tag = the airline's bag tag or its receipt sticker; car = a vehicle; boarding_pass = a boarding pass (paper or on a screen)",
+    },
+    tag_number: { type: "string", description: "Only for bag_tag: the bag tag number printed on it (letters and digits, e.g. ZZ123456); empty otherwise" },
     description: { type: "string", description: "One sentence: color, type, material and distinguishing marks. Only what is visible." },
     visible_damage: { type: "array", items: { type: "string" }, description: "Each visible damage, short, with where it is" },
     new_damage: { type: "array", items: { type: "string" }, description: "Damage not present in the earlier description; empty if there is none or no earlier description" },
@@ -65,8 +72,10 @@ export async function readEvidence(
     { caller: "evidence/describe" },
   );
   const j = JSON.parse(outputText(r));
+  const tag = String(j.tag_number ?? "").replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12);
   const reading: EvidenceReading = {
     object: j.object,
+    ...(j.object === "bag_tag" && tag ? { tagNumber: tag } : {}),
     description: scrub(String(j.description ?? "")).slice(0, 300),
     visibleDamage: (j.visible_damage ?? []).slice(0, 10).map((x: unknown) => scrub(String(x)).slice(0, 160)),
     marks: {},
@@ -75,7 +84,7 @@ export async function readEvidence(
       ? { newDamage: (j.new_damage ?? []).slice(0, 10).map((x: unknown) => scrub(String(x)).slice(0, 160)) }
       : {}),
   };
-  if (reading.object === "other") return reading;
+  if (reading.object === "other" || reading.object === "boarding_pass" || reading.object === "bag_tag") return reading; // nothing to segment
   // SAM 3.1 has no substitute: if it is down, the evidence is still recorded and answered, only without the count.
   for (const concept of MARK_CONCEPTS) {
     try {
@@ -99,9 +108,9 @@ async function countMarks(client: MetaClient, imageDataUrl: string, concept: str
 }
 
 const OBJECT: Record<Lang, Record<EvidenceObject, string>> = {
-  en: { bag: "your bag", car: "the car" },
-  es: { bag: "tu maleta", car: "el auto" },
-  fr: { bag: "votre bagage", car: "la voiture" },
+  en: { bag: "your bag", bag_tag: "your bag tag", car: "the car" },
+  es: { bag: "tu maleta", bag_tag: "la etiqueta de tu maleta", car: "el auto" },
+  fr: { bag: "votre bagage", bag_tag: "l'étiquette de votre bagage", car: "la voiture" },
 };
 const MARK: Record<Lang, Record<string, [string, string]>> = {
   en: { scratch: ["scratch mark", "scratch marks"], dent: ["dent", "dents"] },
@@ -110,8 +119,13 @@ const MARK: Record<Lang, Record<string, [string, string]>> = {
 };
 
 /** The reply, written by code from the reading: no figures beyond the marks counted and the time of the photo. */
-export function evidenceReply(r: EvidenceReading & { object: EvidenceObject }, lang: Lang, at: string, earlierAt?: string): string {
-  const when = at.slice(0, 16).replace("T", " ") + " UTC";
+export function evidenceReply(r: EvidenceReading & { object: EvidenceObject }, lang: Lang, at: string, earlierAt?: string, tz?: string): string {
+  const stamp = (iso: string) => {
+    if (!tz) return iso.slice(0, 16).replace("T", " ") + " UTC";
+    const f = new Intl.DateTimeFormat(lang === "en" ? "en-US" : lang === "es" ? "es-MX" : "fr-CA", { timeZone: tz, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+    return f.format(new Date(iso));
+  };
+  const when = stamp(at);
   const what = OBJECT[lang][r.object];
   const marks = Object.entries(r.marks)
     .filter(([, n]) => n > 0)
@@ -136,8 +150,13 @@ export function evidenceReply(r: EvidenceReading & { object: EvidenceObject }, l
     ],
   };
   const out = lines[lang];
+  if (r.object === "bag_tag") {
+    out.splice(1, 2, r.tagNumber
+      ? { en: `Bag tag number: ${r.tagNumber}. It is what the airline asks for if the bag doesn't arrive.`, es: `Número de etiqueta: ${r.tagNumber}. Es lo que te pide la aerolínea si la maleta no llega.`, fr: `Numéro d'étiquette : ${r.tagNumber}. C'est ce que la compagnie demande si le bagage n'arrive pas.` }[lang]
+      : { en: "I couldn't read the tag number: try a closer photo of the printed number.", es: "No pude leer el número de la etiqueta: intenta una foto más cerca del número impreso.", fr: "Je n'ai pas pu lire le numéro : essayez une photo plus proche du numéro imprimé." }[lang]);
+  }
   if (r.newDamage && earlierAt) {
-    const before = earlierAt.slice(0, 16).replace("T", " ") + " UTC";
+    const before = stamp(earlierAt);
     out.push(
       r.newDamage.length
         ? {
@@ -150,4 +169,66 @@ export function evidenceReply(r: EvidenceReading & { object: EvidenceObject }, l
   }
   out.push({ en: "Keep the original photo on your phone too: I keep the description, not the photo.", es: "Guarda también la foto original en tu teléfono: yo guardo la descripción, no la foto.", fr: "Gardez aussi la photo originale sur votre téléphone : je garde la description, pas la photo." }[lang]);
   return out.join("\n");
+}
+
+/** What a boarding pass says, read by Muse Spark. Never the barcode, booking code or document numbers. */
+export interface BoardingPassReading {
+  flight: string;
+  date: string;
+  from: string;
+  to: string;
+  boardingTime: string;
+  gate: string;
+  seat: string;
+  group: string;
+  givenName: string;
+}
+
+const PASS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["flight", "date", "from", "to", "boarding_time", "gate", "seat", "group", "given_name"],
+  properties: {
+    flight: { type: "string", description: "Airline code and number, e.g. ZZ1234; empty if not visible" },
+    date: { type: "string", description: "YYYY-MM-DD if a full date is visible, else empty" },
+    from: { type: "string", description: "3-letter departure airport code, else empty" },
+    to: { type: "string", description: "3-letter arrival airport code, else empty" },
+    boarding_time: { type: "string", description: "Boarding time as HH:MM (24 h) exactly as printed, else empty" },
+    gate: { type: "string", description: "Gate as printed; empty if none, TBD, '--' or 'see screens'" },
+    seat: { type: "string", description: "Seat, else empty" },
+    group: { type: "string", description: "Boarding group or zone, else empty" },
+    given_name: { type: "string", description: "Only the passenger's first given name, else empty" },
+  },
+} as const;
+
+export async function readBoardingPass(client: MetaClient, imageDataUrl: string): Promise<BoardingPassReading> {
+  const r = await client.responses(
+    {
+      model: "muse-spark-1.3",
+      reasoning: { effort: "low" },
+      max_output_tokens: 1200,
+      instructions:
+        "Read this boarding pass. Copy only what is printed; leave a field empty when it is not visible. Never copy the barcode, " +
+        "booking reference, ticket number, frequent flyer number or any document number.",
+      input: [{ role: "user", content: [{ type: "input_image", image_url: imageDataUrl }] }],
+      text: { format: { type: "json_schema", name: "boarding_pass", schema: PASS_SCHEMA, strict: true } },
+    },
+    { caller: "evidence/boarding-pass" },
+  );
+  const j = JSON.parse(outputText(r));
+  const clean = (v: unknown, re: RegExp, max: number) => {
+    const x = String(v ?? "").trim().toUpperCase();
+    return re.test(x) ? x.slice(0, max) : "";
+  };
+  return {
+    flight: clean(String(j.flight ?? "").replace(/\s+/g, ""), /^[A-Z0-9]{2}\d{1,4}$/, 6),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(String(j.date)) ? String(j.date) : "",
+    from: clean(j.from, /^[A-Z]{3}$/, 3),
+    to: clean(j.to, /^[A-Z]{3}$/, 3),
+    boardingTime: /^\d{2}:\d{2}$/.test(String(j.boarding_time)) ? String(j.boarding_time) : "",
+    gate: clean(j.gate, /^[A-Z0-9-]{1,5}$/, 5),
+    seat: clean(j.seat, /^\d{1,3}[A-Z]$/, 4),
+    group: clean(j.group, /^[A-Z0-9 ]{1,10}$/, 10),
+    givenName: String(j.given_name ?? "").replace(/[^\p{L}' -]/gu, "").trim().split(/\s+/)[0]?.slice(0, 30) ?? "",
+  };
 }

@@ -30,6 +30,10 @@ policy will be updated.</p>
 <ul>
   <li>Your WhatsApp number and the messages you send Escala: text, and the photos, documents or voice notes you choose to share.</li>
   <li>Your itinerary, and what you ask Escala to remember.</li>
+  <li>What you tell Escala about the trip around the flights (where you stay and its address, how many bags you check and
+  their weight, a rental car), and what your boarding pass says if you send it (boarding time, gate, seat, group and your
+  first name). Escala never keeps the barcode, the booking code or document numbers. All of it is kept with your trip and
+  deleted with it.</li>
   <li>The name in your WhatsApp profile, as WhatsApp sends it, to call you by it now and then. Escala never guesses anything
   else about you from it.</li>
   <li>Flight status for the flights on your itinerary.</li>

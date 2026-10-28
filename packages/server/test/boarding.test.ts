@@ -31,7 +31,7 @@ describe("heading to the gate", () => {
   it("is sent once, and never while the traveler is still flying the leg before", async () => {
     const sent: Array<{ to: string; m: OutboundMessage }> = [];
     let now = Date.parse("2026-11-02T20:00:00Z");
-    const person = { id: "a", lang: "es", stage: "ready", trip: { legs: [{ flight: "ZZ1234" }, { flight: "ZZ567" }] } } as unknown as Person;
+    const person = { id: "a", lang: "es", stage: "ready", details: { checkedBags: 0 }, trip: { legs: [{ flight: "ZZ1234" }, { flight: "ZZ567" }] } } as unknown as Person;
     const tick = createBoardingReminders({
       feed: { findByIdent: (i) => (i === "ZZ1234" ? first : second), now: () => now },
       people: () => [person], send: async (to, m) => void sent.push({ to, m }), windowOpen: () => true, cityOf: () => "Austin",
@@ -43,5 +43,36 @@ describe("heading to the gate", () => {
     now = Date.parse("2026-11-02T21:40:00Z"); // ZZ567's reminder time, but ZZ1234 lands at 23:15
     await tick();
     expect(sent).toHaveLength(1);
+  });
+});
+
+describe("around the airport", () => {
+  const setup = (person: Person, now: number) => {
+    const sent: OutboundMessage[] = [];
+    const tick = createBoardingReminders({
+      feed: { findByIdent: (i) => (i === "ZZ1234" ? first : second), now: () => now },
+      people: () => [person], send: async (_to, m) => void sent.push(m), windowOpen: () => true, cityOf: () => "Austin",
+    });
+    return { sent, tick };
+  };
+
+  it("asks for photos of the bag and its tag before check-in, unless they carry everything on", async () => {
+    const at = Date.parse("2026-11-02T19:15:00Z"); // 95 min before a domestic departure
+    const bag = setup({ id: "b", lang: "es", stage: "ready", trip: { legs: [{ flight: "ZZ1234" }] } } as unknown as Person, at);
+    await bag.tick();
+    expect((bag.sent[0] as { text: string }).text).toMatch(/^🧳 Si vas a documentar maleta: antes de entregarla, tómale una foto/);
+    const carryOn = setup({ id: "c", lang: "es", stage: "ready", details: { checkedBags: 0 }, trip: { legs: [{ flight: "ZZ1234" }] } } as unknown as Person, at);
+    await carryOn.tick();
+    expect(carryOn.sent).toHaveLength(0);
+  });
+
+  it("uses the boarding time printed on their pass, and says when the gate moved", async () => {
+    const person = { id: "d", lang: "en", stage: "ready", details: { checkedBags: 0 }, boardingPasses: { ZZ1234: { boardingTime: "14:20", gate: "12" } }, trip: { legs: [{ flight: "ZZ1234" }] } } as unknown as Person;
+    const early = setup(person, Date.parse("2026-11-02T19:50:00Z")); // the airline rule would remind now; the pass says 14:20 local (20:20Z)
+    await early.tick();
+    expect(early.sent).toHaveLength(0);
+    const due = setup(person, Date.parse("2026-11-02T20:06:00Z"));
+    await due.tick();
+    expect((due.sent[0] as { text: string }).text).toMatch(/Your boarding pass says boarding starts at 14:20\. The pass says gate 12, but it is now 17/);
   });
 });

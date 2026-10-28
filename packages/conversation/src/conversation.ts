@@ -54,8 +54,25 @@ export interface Person {
   location?: SharedLocation;
   /** Their WhatsApp profile name, to call them by it now and then; never used to guess anything else about them. */
   name?: string;
+  /** What they told about the trip around the flights: where they stay, checked bags, a rental car. */
+  details?: TripDetails;
+  /** What their boarding passes say, by flight ("ZZ1234"): boarding time and gate as printed, seat, group. */
+  boardingPasses?: Record<string, { boardingTime?: string; gate?: string; seat?: string; group?: string; date?: string }>;
   /** The country of the passport they fly with (ISO 3166-1 alpha-2), as they said it. Kept like the rest of the trip, or remembered if they turned memory on. */
   passport?: string;
+}
+
+export interface TripDetails {
+  /** Name of the hotel or place they stay at the destination. */
+  stay?: string;
+  /** Its address, as they gave it (for immigration forms and directions). */
+  stayAddress?: string;
+  /** Checked bags: 0 means carry-on only. */
+  checkedBags?: number;
+  /** Weight of the checked bag(s) in kg, as they said it. */
+  bagKg?: number;
+  /** Rental car company at the destination; "" when they rent one without saying which; null when they don't. */
+  rentalCar?: string | null;
 }
 
 export interface SharedLocation {
