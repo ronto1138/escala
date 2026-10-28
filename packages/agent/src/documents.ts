@@ -57,7 +57,7 @@ export const DOC_RULES: DocRule[] = [
   { id: "schengen-etias", passport: "NON_EU", country: "ES FR", role: "entry", requirement: "ETIAS, the future travel authorization, is not in operation yet and takes no applications; the EU plans it for the last quarter of 2026, date to be announced.", url: "https://home-affairs.ec.europa.eu/policies/schengen/smart-borders_en", quote: "currently not in operation and no applications for travel authorisations are collected at this point", checked_on: "2026-10-28", status: "VERIFICADO" },
 ];
 
-const EU = new Set(["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]);
+export const EU_COUNTRIES = new Set(["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]);
 
 /** Where each country publishes its entry rules, for pairs the table does not cover. */
 export const OFFICIAL_PAGES: Record<string, string> = {
@@ -99,7 +99,7 @@ export function documentsFor(passport: string, trip: Trip | undefined, rules: Do
   return tripCountries(trip).touched.map(({ country, role, airport }) => {
     const own = country === pp;
     const holds = (r: DocRule) =>
-      r.passport.split(" ").some((x) => x === pp || x === "*" || (x === "EU" && EU.has(pp)) || (x === "NON_EU" && !EU.has(pp)));
+      r.passport.split(" ").some((x) => x === pp || x === "*" || (x === "EU" && EU_COUNTRIES.has(pp)) || (x === "NON_EU" && !EU_COUNTRIES.has(pp)));
     // In their own country only what their country asks on the way out applies (the FEM); entry rules are for foreigners.
     const found = rules.filter((r) => r.country.split(" ").includes(country) && holds(r) && (r.role === role || (r.role === "both" && role !== "exit")) && (!own || r.role === "exit"));
     // A rule for everyone (the US has no airside transit) does not mean this passport is covered.

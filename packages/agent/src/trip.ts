@@ -42,6 +42,7 @@ export const AIRPORTS: Record<string, Airport> = {
   YYZ: { city: "Toronto", country: "CA", lat: 43.677, lon: -79.624, tz: "America/Toronto" },
   YVR: { city: "Vancouver", country: "CA", lat: 49.195, lon: -123.18, tz: "America/Vancouver" },
   MEX: { city: "Mexico City", country: "MX", lat: 19.436, lon: -99.072, tz: "America/Mexico_City", names: { es: "Ciudad de México", fr: "Mexico" } },
+  DUB: { city: "Dublin", country: "IE", lat: 53.421, lon: -6.27, tz: "Europe/Dublin", names: { es: "Dublín", fr: "Dublin" } },
   MAD: { city: "Madrid", country: "ES", lat: 40.498, lon: -3.567, tz: "Europe/Madrid" },
   LIS: { city: "Lisbon", country: "PT", lat: 38.774, lon: -9.134, tz: "Europe/Lisbon", names: { es: "Lisboa", fr: "Lisbonne" } },
   CDG: { city: "Paris CDG", country: "FR", lat: 49.01, lon: 2.548, tz: "Europe/Paris", names: { es: "París Charles de Gaulle", fr: "Paris-Charles-de-Gaulle" } },

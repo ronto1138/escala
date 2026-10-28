@@ -70,3 +70,18 @@ describe("what Escala still needs around the flights", () => {
     expect(prepQuestion({ ...p({ stay: "H", checkedBags: 0, rentalCar: null }), style: "frequent" })).toBeNull();
   });
 });
+
+describe("free airport assistance", () => {
+  it("brings each place's own rule for the airports of the trip", async () => {
+    const { assistanceFor } = await import("../src/assistance.ts");
+    const dub = { bookingRef: null, legs: [
+      { flight: "ZZ1", date: "2026-11-02", from: "MEX", to: "MAD", dep_local: "20:00", arr_local: "14:00" },
+      { flight: "ZZ2", date: "2026-11-03", from: "MAD", to: "DUB", dep_local: "16:00", arr_local: "17:40" },
+    ] };
+    const out = assistanceFor(dub);
+    expect(out.map((o) => o.country)).toEqual(["MX", "ES", "IE"]);
+    expect(out[1]!.rules.map((r) => r.url)).toEqual([expect.stringContaining("europa.eu")]);
+    expect(out[2]!.rules.map((r) => r.url)).toEqual([expect.stringContaining("europa.eu"), expect.stringContaining("dublinairport.com")]);
+    expect(out[0]!.rules.find((r) => r.url.includes("dof.gob.mx"))!.status).toBe("NO_VERIFICADO");
+  });
+});
