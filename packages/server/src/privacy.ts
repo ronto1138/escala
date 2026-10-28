@@ -37,11 +37,13 @@ policy will be updated.</p>
   <li>If you send a photo of a bag, its tag or a rental car: a description of what is visible, any damage, the bag tag
   number, the time and a fingerprint (SHA-256) of the photo, to show later that it is the same photo. The photo itself is
   not kept. Kept with your trip and deleted with it.</li>
-  <li>Whether you are new to flying or fly often, if you say so, to adjust how Escala writes to you. Kept with your trip, or
-  remembered for future trips if you turned memory on.</li>
-  <li>If you send a voice note of someone speaking to you (an officer, airline staff) so Escala interprets it: it is
-  transcribed like your own voice notes, the audio is not kept, and the transcript is part of the conversation. Respect
-  local rules and the other person when recording.</li>
+  <li>Whether you are new to flying or fly often, as you say it or as Escala understands it from what you tell it (for
+  example, that it is your first flight), to adjust how it writes to you. Kept with your trip; with memory for future trips
+  turned on, it is remembered with your own short words as the source.</li>
+  <li>If you send a voice note of someone speaking to you (an officer, airline staff) so Escala interprets it: Meta's model
+  transcribes and interprets it, the audio is not kept, and the transcript stays in the conversation (the last 12 turns, at
+  most 48 hours) marked as someone else's words; during the test phase it is also in the sealed conversation the team can
+  read. Record only what you need, and respect the other person and local rules.</li>
   <li>The name in your WhatsApp profile, as WhatsApp sends it, to call you by it now and then. Escala never guesses anything
   else about you from it.</li>
   <li>Flight status for the flights on your itinerary.</li>

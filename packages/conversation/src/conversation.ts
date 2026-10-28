@@ -200,7 +200,9 @@ export class Conversation {
       const after = this.people.get(m.from);
       if (after) {
         // A shared location is remembered as a turn by its place name only, so a later "how do I get there" has context.
-        const said = text || (m.kind === "location" ? `📍 ${m.name ?? "(location shared)"}` : "");
+        // Someone else's recorded words are kept as theirs, never as something the traveler said.
+        const other = m.kind === "text" && m.spokenBy === "other";
+        const said = other ? `(recorded: someone else told the traveler) ${text}` : text || (m.kind === "location" ? `📍 ${m.name ?? "(location shared)"}` : "");
         if (said) this.rememberInbound(after, said, m.at, after === p ? before : 0);
         else after.recent = (after.recent ?? []).filter((t) => Date.parse(t.at) >= Date.now() - RECENT_MS).slice(-RECENT_TURNS);
         this.deps.store?.save(after);
@@ -431,6 +433,8 @@ export class Conversation {
 
   private async confirm(p: Person) {
     if (!p.pending) return this.askForTrip(p);
+    // A new trip without memory for future trips starts fresh: how they traveled last time is not kept.
+    if (p.trip && p.share !== "profile") delete p.style;
     p.trip = p.pending.trip;
     delete p.pending;
     p.stage = "ready";
