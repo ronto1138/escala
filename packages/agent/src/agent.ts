@@ -8,6 +8,7 @@ import { forWhatsApp, legLine } from "./format.ts";
 import { evidenceReply, readBoardingPass, readEvidence, type EvidenceObject } from "./evidence.ts";
 import { convertUnits, mapsLink, RIGHTS_TOPIC, searchTravel, UNIT_NAMES, type createRates } from "./guide.ts";
 import { crossesBorder, documentsFor, passportFromStatement } from "./documents.ts";
+import { RENTAL_CARS } from "./rentals.ts";
 import { createChecking, describeLocation, legInstant, localClock, locationIsFresh, usableCheckingLine, whereNow } from "./whereabouts.ts";
 import { acceptCandidates, proposeFacts } from "./learner.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
@@ -156,6 +157,13 @@ const TOOLS = [
         rental_car: { type: ["string", "null"], description: "rental company name; 'yes' if renting without saying which; 'no' if not renting" },
       },
     },
+    strict: true,
+  },
+  {
+    type: "function",
+    name: "rental_cars",
+    description: "Where the rental car counters are at an airport of the trip and how to get there, from the airport's own page. Call it before search_travel_info for rental cars.",
+    parameters: { type: "object", additionalProperties: false, required: ["airport"], properties: { airport: { type: "string", description: "IATA code, e.g. YUL" } } },
     strict: true,
   },
   {
@@ -552,7 +560,7 @@ export function createEscalaAgent(
       "If rights_for_trip returns nothing for this country or this kind of problem, say your rules don't cover it yet; never conclude that no rights exist or that the airline owes nothing. " +
       "Ask at most one question, and only the one rights_for_trip returned or one needed to answer; don't end with offers phrased as questions. " +
       "You give information with sources, not legal advice; never promise compensation. Never book anything, and offer only what you can do: you cannot see other flights or seats. " +
-      "Entry and transit documents: when the traveler tells which passport they fly with, call set_passport (dual nationals: the one they fly with), then documents_for_trip, and say for each country on the route, the connection included, what it asks, with the official page and the day it was read. " +
+      "Entry and transit documents: when the traveler tells which passport they fly with, call set_passport (dual nationals: the one they fly with), then documents_for_trip, and say for each country on the route (leaving, the connection, arriving) what it asks and which forms to fill, naming the official site (\"canada.ca, Oct 28\"); write a full link only where they must go to fill something (like the FEM). Keep it short. " +
       "Never state a visa, authorization or entry requirement that documents_for_trip did not return; for a country it does not cover, say you don't have it verified yet and give its official page; if a rule is NO_VERIFICADO, say so. " +
       "You cannot message other people yet: if asked to tell someone something, say so kindly and give a short ready-to-forward message in the traveler's language with only what they told you or the trip shows. " +
       "For getting around, places, food, stays, events, tours, airport layout or safety, call search_travel_info and offer what it found as a suggestion, " +
@@ -562,8 +570,8 @@ export function createEscalaAgent(
       (crossesBorder(trip) ? ` Passport they fly with: ${p.passport ?? "not known yet (ask only if documents come up and it is your one question)"}.` : "") +
       ` Around the flights: ${tripDetailsText(p)}.` +
       (p.boardingPasses && Object.keys(p.boardingPasses).length ? ` Their boarding passes say: ${JSON.stringify(p.boardingPasses)}; a pass's boarding time beats any airline rule.` : "") +
-      " When you tell the documents for the first time, end by asking in one short message what is still unknown of: where they stay at the destination (name and address: immigration forms ask for it), whether they check a bag, and whether they rent a car; save what they answer with set_trip_details. " +
-      "If they check a bag, before check-in suggest a photo of the bag and, after, of the tag sticker; if they say what it weighs, save it. If they rent a car, when they land tell them where the rental counters are (search_travel_info) and to photograph the car before driving off. " +
+      " When they tell where they stay, whether they check a bag or rent a car, save it with set_trip_details (Escala asks for it after the documents). " +
+      "If they check a bag, before check-in suggest a photo of the bag and, after, of the tag sticker; if they say what it weighs, save it. If they rent a car, when they land tell them where the rental counters are (rental_cars first) and to photograph the car before driving off. " +
       "When they land where they stay, give the way to it with maps_link from the airport. When they will fill an immigration or customs form, remind them of the stay's address. " +
       (deps.memory
         ? ` When the traveler shares a useful habit or preference, call remember with their own words: scope "profile" for habits and preferences that matter on future trips${p.share === "profile" ? "" : " (they have not turned that on, so use \"trip\")"}, scope "trip" for what only matters now.`
@@ -581,13 +589,20 @@ export function createEscalaAgent(
     const input: any[] = [...earlier.map((t) => ({ role: t.role, content: t.content })), { role: "user", content: question }];
     currentMessage = { id: messageId, at: messageAt };
     let toldChecking = false;
+    let toldDocuments = false;
     for (let round = 0; round < (deps.maxToolRounds ?? 4); round++) {
       const r = await deps.client.responses(
         { model: "muse-spark-1.3", reasoning: { effort: "low" }, max_output_tokens: 3000, instructions, input, tools: TOOLS as unknown as unknown[] },
         { caller: "agent/loop" },
       );
       const calls = (r.output ?? []).filter((o: any) => o.type === "function_call");
-      if (!calls.length) return finalize(outputText(r), p, instructions, input, allowed);
+      if (!calls.length) {
+        const text = await finalize(outputText(r), p, instructions, input, allowed);
+        // The documents are when Escala asks what the forms and the arrival need; asked in code so it is never skipped.
+        const ask = toldDocuments ? prepQuestion(p) : null;
+        return ask && !text.includes("?") ? `${text}\n\n${ask}` : text;
+      }
+      if (calls.some((c: any) => c.name === "documents_for_trip")) toldDocuments = true;
       // A web search takes 10–16 s: only then, and once per message, the traveler hears that Escala is looking.
       if (!toldChecking && deps.progress && calls.some((c: any) => c.name === "search_travel_info")) {
         toldChecking = true;
@@ -763,6 +778,12 @@ export function createEscalaAgent(
       p.details = d;
       return { saved: d };
     }
+    if (name === "rental_cars") {
+      const r = RENTAL_CARS[String(args.airport ?? "").toUpperCase()];
+      if (!r) return { not_listed: "this airport is not in the list: use search_travel_info and say what it could not confirm" };
+      for (const c of extractClaims(`${r.where} ${r.how}`)) if (c.kind === "duration") allowed.durations.push(c.value);
+      return { ...r, note: "from the airport's own page; company lists can change" };
+    }
     if (name === "documents_for_trip") {
       if (!p.passport) return { error: "passport unknown: ask which passport they fly with" };
       const found = documentsFor(p.passport, trip);
@@ -895,6 +916,35 @@ export function createEscalaAgent(
       }
     },
   };
+}
+
+/** The question for what is still unknown around the flights (stay, checked bags, rental car); null if nothing is. */
+export function prepQuestion(p: Person): string | null {
+  const d = p.details ?? {};
+  const miss = { stay: !d.stay, bags: d.checkedBags === undefined, car: d.rentalCar === undefined };
+  if (!miss.stay && !miss.bags && !miss.car) return null;
+  const parts: Record<Lang, string[]> = { en: [], es: [], fr: [] };
+  if (miss.stay) {
+    parts.en.push("where you're staying (name and address: the forms ask for it)");
+    parts.es.push("dónde te vas a quedar (nombre y dirección: los formularios la piden)");
+    parts.fr.push("où vous logez (nom et adresse : les formulaires la demandent)");
+  }
+  if (miss.bags) {
+    parts.en.push("whether you check a bag");
+    parts.es.push("si vas a documentar maleta");
+    parts.fr.push("si vous enregistrez un bagage");
+  }
+  if (miss.car) {
+    parts.en.push("whether you rent a car");
+    parts.es.push("si vas a rentar coche");
+    parts.fr.push("si vous louez une voiture");
+  }
+  const join = (xs: string[], and: string) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} ${and} ${xs.at(-1)}` : xs[0]!);
+  return {
+    en: `To help you along the way, tell me ${join(parts.en, "and")}.`,
+    es: `Para ayudarte en el camino, cuéntame ${join(parts.es, "y")}.`,
+    fr: `Pour vous aider en route, dites-moi ${join(parts.fr, "et")}.`,
+  }[p.lang];
 }
 
 /** What the traveler told about the trip around the flights, for the instructions. */

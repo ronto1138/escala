@@ -13,6 +13,7 @@ const rule = (over: Partial<DocRule>): DocRule => ({
 describe("documents by passport", () => {
   it("sees the connection as transit and the destination as entry", () => {
     expect(tripCountries(trip)).toEqual({ start: "MX", touched: [
+      { country: "MX", role: "exit", airport: "MEX" },
       { country: "US", role: "transit", airport: "IAH" },
       { country: "CA", role: "entry", airport: "YUL" },
     ] });
@@ -20,11 +21,11 @@ describe("documents by passport", () => {
   });
 
   it("returns only rules with a source, and says when a country is not covered", () => {
-    const out = documentsFor("mx", trip, [rule({}), rule({ country: "CA", passport: "FR" })]);
+    const out = documentsFor("mx", trip, [rule({}), rule({ country: "CA", passport: "FR" })]).slice(1);
     expect(out[0]).toMatchObject({ country: "US", covered: true, rules: [{ requirement: "synthetic requirement", url: "https://example.gov" }] });
     expect(out[1]).toMatchObject({ country: "CA", covered: false, official_page: expect.stringContaining("canada.ca") });
-    expect(documentsFor("FR", trip, [rule({ passport: "EU", country: "CA", role: "entry" })])[1]).toMatchObject({ covered: true });
-    expect(documentsFor("US", trip, [])[0]).toMatchObject({ own_country: true });
+    expect(documentsFor("FR", trip, [rule({ passport: "EU", country: "CA", role: "entry" })])[2]).toMatchObject({ covered: true });
+    expect(documentsFor("US", trip, [])[1]).toMatchObject({ own_country: true });
   });
 
   it("reads back the remembered passport", () => {
@@ -35,16 +36,17 @@ describe("documents by passport", () => {
 
 describe("the official table", () => {
   it("tells a Mexican passport connecting in the US what both countries ask", () => {
-    const [us, ca] = documentsFor("MX", trip);
+    const [mx, us, ca] = documentsFor("MX", trip);
+    expect(mx).toMatchObject({ role: "exit", own_country: true, rules: [expect.objectContaining({ requirement: expect.stringContaining("Formato Estadístico para Mexicanos") })] });
     expect(us!.rules.map((r) => r.url)).toEqual([
-      expect.stringContaining("ecfr.gov"), expect.stringContaining("dhs.gov"), expect.stringContaining("cbp.gov"),
+      expect.stringContaining("ecfr.gov"), expect.stringContaining("dhs.gov"), expect.stringContaining("cbp.gov"), expect.stringContaining("cbp.gov/travel/clearing-cbp"),
     ]);
-    expect(us!.rules.find((r) => r.url.includes("cbp.gov"))!.status).toBe("NO_VERIFICADO");
-    expect(ca).toMatchObject({ covered: true, rules: [expect.objectContaining({ requirement: expect.stringContaining("US non-immigrant visa") })] });
+    expect(us!.rules.find((r) => r.url.includes("newsroom"))!.status).toBe("NO_VERIFICADO");
+    expect(ca).toMatchObject({ covered: true, rules: expect.arrayContaining([expect.objectContaining({ requirement: expect.stringContaining("US non-immigrant visa") }), expect.objectContaining({ requirement: expect.stringContaining("ArriveCAN") })]) });
   });
 
   it("a rule for everyone does not make a passport covered", () => {
-    const [us] = documentsFor("JP", trip);
+    const [, us] = documentsFor("JP", trip);
     expect(us).toMatchObject({ covered: false, official_page: expect.stringContaining("travel.state.gov") });
     expect(us!.rules.length).toBeGreaterThan(0); // still: no airside transit
   });
@@ -56,5 +58,15 @@ describe("the official table", () => {
       expect(r.quote.length).toBeGreaterThan(10);
       expect(r.checked_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
+  });
+});
+
+describe("what Escala still needs around the flights", () => {
+  it("asks only for what is unknown, in the traveler's language", async () => {
+    const { prepQuestion } = await import("../src/agent.ts");
+    const p = (details: object) => ({ id: "x", lang: "es", details }) as any;
+    expect(prepQuestion(p({}))).toBe("Para ayudarte en el camino, cuéntame dónde te vas a quedar (nombre y dirección: los formularios la piden), si vas a documentar maleta y si vas a rentar coche.");
+    expect(prepQuestion(p({ stay: "Hotel Ejemplo", checkedBags: 1 }))).toBe("Para ayudarte en el camino, cuéntame si vas a rentar coche.");
+    expect(prepQuestion(p({ stay: "H", checkedBags: 0, rentalCar: null }))).toBeNull();
   });
 });
