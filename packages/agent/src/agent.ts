@@ -324,6 +324,10 @@ export function createEscalaAgent(
       .slice(-HISTORY_TURNS)
       .map((t) => ({ role: t.role === "traveler" ? ("user" as const) : ("assistant" as const), content: t.text }));
 
+  // A trip on the demo's simulated flights lives on the story's clock (it runs faster than life); any other, on the real one.
+  const storyNow = (trip: Trip | undefined) =>
+    deps.feed.now && trip?.legs.some((l) => deps.feed.findByIdent(l.flight)) ? deps.feed.now() : Date.parse(messageAt) || Date.now();
+
   async function extractItinerary(m: InboundMessage, p: Person, correction?: string): Promise<ExtractedTrip | null> {
     const current = (p.pending?.trip ?? p.trip) as Trip | undefined;
     const trip = await extractTrip(deps.client, deps.media, m, { ...(current ? { current } : {}), ...(correction ? { correction } : {}) });
@@ -484,8 +488,8 @@ export function createEscalaAgent(
         : " If the traveler asks how to get somewhere nearby or for something close to them and you don't know where they are, ask them to share their location in WhatsApp (clip → Location).") +
       ((here) =>
         here
-          ? ` Right now it is ${localClock(Date.parse(messageAt) || Date.now(), here.tz)} in ${here.city}, where the traveler most likely is (${here.why}). Give every time as a clock time, local at its airport, and say which city when it could be confused.`
-          : "")(whereNow(trip, Date.parse(messageAt) || Date.now(), p.location)) +
+          ? ` Right now it is ${localClock(storyNow(trip), here.tz)} in ${here.city}, where the traveler most likely is (${here.why}). Give every time as a clock time, local at its airport, and say which city when it could be confused.`
+          : "")(whereNow(trip, storyNow(trip), p.location)) +
       " When you call search_travel_info, also write one short line telling the traveler you are looking it up, in your own words and about what they asked, different every time; no figures or questions in it.";
 
     const input: any[] = [...earlier.map((t) => ({ role: t.role, content: t.content })), { role: "user", content: question }];

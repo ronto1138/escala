@@ -16,6 +16,7 @@ import { toWav, tripKeywords } from "./audio.ts";
 import { Budget } from "./budget.ts";
 import { CloudApiChannel } from "./cloud.ts";
 import { createNotifier } from "./notifier.ts";
+import { createBoardingReminders } from "./boarding.ts";
 import { createTestPhase, NOT_ENROLLED, SqliteTesterStore, TEST_NOTICE } from "./testers.ts";
 import { createWebhookHandler, tag } from "./webhook.ts";
 
@@ -73,7 +74,12 @@ const scenario = fileURLToPath(new URL("../../feeds/scenarios/demo-inbound-late.
 // Flights are simulated (no flight data provider yet): the demo scenario plays in real time, faster than life, from
 // the moment someone confirms a trip with its flights, so changes and their alerts arrive on their own.
 const demoScenario = loadScenario(scenario);
-const feed = new ReplayClock(demoScenario, { secondsPerMinute: Number(env.REPLAY_SECONDS_PER_MINUTE ?? 3) });
+// The story's events every few seconds, then a faster stretch up to boarding time so the gate reminder comes within minutes.
+const feed = new ReplayClock(demoScenario, {
+  secondsPerMinute: Number(env.REPLAY_SECONDS_PER_MINUTE ?? 3),
+  tailMinutes: 150,
+  tailSecondsPerMinute: Number(env.REPLAY_TAIL_SECONDS_PER_MINUTE ?? 0.5),
+});
 // The demo trip (D48): the scenario's two connecting flights, dated so the story starts when the person asks for it.
 const DEMO_FLIGHTS = ["ZZ1234", "ZZ567"];
 const demoStartedAt = new Map<string, number>();
@@ -227,6 +233,17 @@ channel.send = async (to, m) => {
 // Flight changes become messages: free text inside the 24-hour window, the approved template outside it.
 const notify = createNotifier({ send: (to, m) => channel.send(to, m), windowOpen: (to) => channel.windowOpen(to), people: () => conversation.people.values(), log });
 feed.subscribe((events, snap) => void notify(events, snap));
+
+// Heading to the gate: once per flight, ahead of what the airline publishes (boarding starts, be at the gate, gate closes).
+const boarding = createBoardingReminders({
+  feed,
+  people: () => conversation.people.values(),
+  send: (to, m) => channel.send(to, m),
+  windowOpen: (to) => channel.windowOpen(to),
+  cityOf: (code) => AIRPORTS[code]?.city,
+  log,
+});
+setInterval(() => void boarding().catch((err) => log({ event: "error", why: "boarding", error: String(err).slice(0, 120) })), 15_000).unref();
 
 const handler = createWebhookHandler({ verifyToken: need("WHATSAPP_VERIFY_TOKEN"), appSecret: env.WHATSAPP_APP_SECRET, deliver, log });
 const host = env.HOST ?? "127.0.0.1";
