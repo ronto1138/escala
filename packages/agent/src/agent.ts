@@ -12,7 +12,7 @@ import { RENTAL_CARS } from "./rentals.ts";
 import { createChecking, describeLocation, legInstant, localClock, locationIsFresh, usableCheckingLine, whereNow } from "./whereabouts.ts";
 import { acceptCandidates, proposeFacts } from "./learner.ts";
 import { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";
-import { factsFor, journeys, norm, type Airlines, type Trip } from "./trip.ts";
+import { cityName, factsFor, journeys, norm, type Airlines, type Trip } from "./trip.ts";
 import { extractClaims, numbersIn, verify, type Allowed, type Verdict } from "./verify.ts";
 
 export interface AgentDeps {
@@ -49,7 +49,7 @@ export function mentionsName(text: string, name: string | undefined): boolean {
   return new RegExp(`(?<!\\p{L})${escaped}(?!\\p{L})`, "iu").test(text);
 }
 
-/** After calling the traveler by name, Escala leaves it for this long: as rarely as possible (Ives, 28-oct). */
+/** After calling the traveler by name, Escala leaves it for this long: as rarely as possible (product decision, Oct 28). */
 const NAME_REST_MS = 12 * 60 * 60 * 1000;
 
 const PASS_UNREADABLE: Record<Lang, string> = {
@@ -151,7 +151,7 @@ const TOOLS = [
       required: ["stay", "stay_address", "checked_bags", "bag_kg", "rental_car"],
       properties: {
         stay: { type: ["string", "null"], description: "hotel or place name at the destination" },
-        stay_address: { type: ["string", "null"], description: "its address as they gave it" },
+        stay_address: { type: ["string", "null"], description: "its street address with number, as they gave it or as they confirmed it after you looked it up; null if they gave none (a city alone is not an address)" },
         checked_bags: { type: ["integer", "null"], description: "how many bags they check; 0 = carry-on only" },
         bag_kg: { type: ["number", "null"], description: "weight of the checked bag in kg (convert from lb with convert first)" },
         rental_car: { type: ["string", "null"], description: "rental company name; 'yes' if renting without saying which; 'no' if not renting" },
@@ -765,7 +765,9 @@ export function createEscalaAgent(
       const d = { ...(p.details ?? {}) };
       const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? scrub(v.trim()).slice(0, max) : undefined);
       const stay = text(args.stay, 80);
-      const address = text(args.stay_address, 160);
+      const given = text(args.stay_address, 160);
+      const address = given && /\d/.test(given) ? given : undefined; // a city alone is not an address
+      if (stay && stay !== d.stay) delete d.stayAddress; // another place: the old address no longer applies
       if (stay) d.stay = stay;
       if (address) d.stayAddress = address;
       if (Number.isInteger(args.checked_bags) && args.checked_bags >= 0 && args.checked_bags <= 9) d.checkedBags = args.checked_bags;
@@ -776,6 +778,23 @@ export function createEscalaAgent(
       const car = text(args.rental_car, 40);
       if (car) d.rentalCar = /^no$/i.test(car) ? null : /^yes$/i.test(car) ? "" : car;
       p.details = d;
+      // They may not have the address at hand: Escala finds it, says where it found it, and lets them confirm it.
+      if (stay && !d.stayAddress) {
+        const city = trip?.legs.length ? cityName(trip.legs.at(-1)!.to, "en") : null;
+        if (deps.progress) await deps.progress(p.id, checking(p.id, p.lang)).catch(() => undefined);
+        const found = await searchTravel(deps.client, {
+          query: `street address of ${stay}${city ? ` in ${city}` : ""}`,
+          place: city,
+          lang: p.lang,
+          profile: [],
+          today: (currentMessage.at || new Date().toISOString()).slice(0, 10),
+        });
+        return {
+          saved: d,
+          address_lookup: found,
+          next: "give the address you found with its source and a maps_link, and ask in one line if that is the place (or say you could not find it and ask for it). Do NOT save it now: only after they confirm in a later message",
+        };
+      }
       return { saved: d };
     }
     if (name === "rental_cars") {

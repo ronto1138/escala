@@ -1,5 +1,5 @@
 /** The privacy policy, served at /privacy. Every statement here must match what the code does (see the tests). */
-export const PRIVACY_UPDATED = "2026-10-27";
+export const PRIVACY_UPDATED = "2026-10-28";
 
 export const PRIVACY_HTML = `<!doctype html>
 <html lang="en">
@@ -15,7 +15,7 @@ export const PRIVACY_HTML = `<!doctype html>
 </head>
 <body>
 <h1>Escala privacy policy</h1>
-<p class="muted">Last updated ${PRIVACY_UPDATED}. Escala is operated by Kokorio, S.A.P.I. de C.V. (Mexico). Contact: ives.laurent@kokorio.com</p>
+<p class="muted">Last updated ${PRIVACY_UPDATED}. Escala is operated by Kokorio, S.A.P.I. de C.V. (Mexico). Contact: privacidad@kokorio.com</p>
 
 <p>Escala is an AI travel companion on WhatsApp. It helps with one trip at a time: your itinerary, flight changes,
 your rights as a passenger, and plans on the way. It is in an early test phase.</p>
@@ -99,7 +99,7 @@ and what a voice note was heard as) to find mistakes and improve Escala. Use mad
   <li>Ask <em>"What do you know about me?"</em> to see what Escala keeps and where each fact came from.</li>
   <li>Say <em>"Forget …"</em> to delete one thing, or <em>"Delete everything"</em> (<em>"Borra todo"</em>, <em>"Efface tout"</em>) to delete all of it.</li>
   <li>Send <em>STOP</em> to stop messages.</li>
-  <li>Or write to ives.laurent@kokorio.com.</li>
+  <li>Or write to privacidad@kokorio.com.</li>
 </ul>
 
 <h2>Who Escala is for</h2>

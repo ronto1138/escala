@@ -202,6 +202,6 @@ export function createTestPhase(o: TestPhaseOptions) {
 export const NOT_ENROLLED =
   "Escala is in a private test right now, open only to people the team has invited. / Escala está en una prueba privada, solo para personas invitadas por el equipo.";
 
-/** What someone who joins with an invitation code reads first (Ives tells the others in person). */
+/** What someone who joins with an invitation code reads first (the team tells the others in person). */
 export const TEST_NOTICE =
   "Test phase: the Kokorio team reads conversations to improve Escala, and Meta may use them while we use free credits. Use made-up details.";
