@@ -28,7 +28,7 @@ describe("demo scenario: inbound aircraft late", () => {
     expect(feed.getFlight(AUS_ORD)?.departure.estimated).toBe("2026-11-02T13:10:00Z"); // airline has not moved it
   });
 
-  it("reports the airline's own update as a fact, then the gate change", () => {
+  it("reports the airline's own update as a fact, then the gate assigned and the gate change", () => {
     const feed = new ReplayFeed(scenario("demo-inbound-late"));
     const events = collect(feed);
     feed.advanceTo(20);
@@ -39,6 +39,10 @@ describe("demo scenario: inbound aircraft late", () => {
       expect.objectContaining({ kind: "arrival_delay_change", flightId: AUS_ORD, inference: false, minutesLate: 100 }),
     );
     expect(events.filter((e) => e.kind === "inbound_late")).toHaveLength(0); // same inference, not repeated
+
+    events.length = 0;
+    feed.advanceTo(75);
+    expect(events).toEqual([expect.objectContaining({ kind: "gate_change", side: "departure", from: null, to: "K14" })]); // the connection gets its gate
 
     events.length = 0;
     feed.advanceTo(90);

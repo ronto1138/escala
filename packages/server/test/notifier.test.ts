@@ -32,6 +32,16 @@ describe("flight alerts", () => {
     expect(sent[0]!.m).toEqual({ kind: "template", name: "escala_flight_update", language: "fr", bodyParams: ["ZZ 1234", "arrive maintenant avec environ 100 min de retard"] });
   });
 
+  it("tells a newly assigned gate apart from a gate change", async () => {
+    const { sent, notify } = setup([person("g")], () => true);
+    await notify([{ kind: "gate_change", flightId: "f1", at: "2026-11-02T12:10:00Z", inference: false, side: "departure", from: null, to: "K14" }], snap);
+    await notify([{ kind: "gate_change", flightId: "f1", at: "2026-11-02T12:20:00Z", inference: false, side: "departure", from: "K14", to: "K18" }], snap);
+    expect(sent.map((x) => (x.m as { text: string }).text)).toEqual([
+      expect.stringMatching(/ZZ 1234 ya tiene puerta de embarque: K14/),
+      expect.stringMatching(/ZZ 1234 ahora sale por la puerta K18/),
+    ]);
+  });
+
   it("tells each change once, and never writes to people without that flight or who said STOP", async () => {
     const { sent, notify } = setup([person("c"), person("d", { stage: "stopped" }), person("e", { trip: { legs: [{ flight: "ZZ567", date: "2026-11-02" }] } })], () => true);
     await notify([late], snap);

@@ -45,7 +45,7 @@ flights:
     inbound_fa_flight_id: null
     origin: { code: KORD, code_icao: KORD, code_iata: ORD, timezone: America/Chicago }
     destination: { code: CYUL, code_icao: CYUL, code_iata: YUL, timezone: America/Toronto }
-    gate_origin: K14
+    gate_origin: null # assigned at minute 75
     gate_destination: "52"
     terminal_origin: "3"
     scheduled_out: "2026-11-02T16:30:00Z"
@@ -59,6 +59,9 @@ steps:
   - minute: 60 # the airline updates the Austin departure
     patch:
       ZZ1234-20261102-replay-0002: { estimated_out: "2026-11-02T14:50:00Z", estimated_in: "2026-11-02T17:15:00Z" }
+  - minute: 75 # the Chicago connection gets its departure gate
+    patch:
+      ZZ567-20261102-replay-0003: { gate_origin: K14 }
   - minute: 90 # gate change in Austin
     patch:
       ZZ1234-20261102-replay-0002: { gate_origin: "17" }

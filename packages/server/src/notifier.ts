@@ -30,6 +30,11 @@ export function changeText(e: FlightEvent, lang: Lang): string | null {
         ? { en: "is back on time", es: "vuelve a ir a tiempo", fr: "est de nouveau à l'heure" }[lang]
         : { en: `now arrives about ${e.minutesLate} min late`, es: `ahora llega con unos ${e.minutesLate} min de retraso`, fr: `arrive maintenant avec environ ${e.minutesLate} min de retard` }[lang];
     case "gate_change":
+      if (!e.from) {
+        return e.side === "departure"
+          ? { en: `has its departure gate: ${e.to}`, es: `ya tiene puerta de embarque: ${e.to}`, fr: `a sa porte d'embarquement : ${e.to}` }[lang]
+          : { en: `has its arrival gate: ${e.to}`, es: `ya tiene puerta de llegada: ${e.to}`, fr: `a sa porte d'arrivée : ${e.to}` }[lang];
+      }
       return e.side === "departure"
         ? { en: `now leaves from gate ${e.to}`, es: `ahora sale por la puerta ${e.to}`, fr: `part maintenant de la porte ${e.to}` }[lang]
         : { en: `now arrives at gate ${e.to}`, es: `ahora llega a la puerta ${e.to}`, fr: `arrive maintenant à la porte ${e.to}` }[lang];
