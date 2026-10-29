@@ -1,5 +1,5 @@
 import type { ChannelPort, InboundMessage, OutboundMessage, ParticipantId } from "@escala/channel";
-import { clearLang, DELETE_ALL_PHRASES, DELETE_WORDS, DEMO_TRIP_ID, DEMO_WORDS, detectLang, EXACT_NO, EXACT_YES, MENU_WORDS, PRIVACY_WORDS, STOP_WORDS, T, type Lang } from "./i18n.ts";
+import { clearLang, DELETE_ALL_PHRASES, DELETE_WORDS, DEMO_TRIP_ID, DEMO_WORDS, detectLang, detectLangOrNull, EXACT_NO, EXACT_YES, MENU_WORDS, PRIVACY_WORDS, STOP_WORDS, T, type Lang } from "./i18n.ts";
 
 export type Stage = "new" | "onboarding" | "ready" | "stopped";
 export type ShareLevel = "trip" | "profile";
@@ -232,8 +232,10 @@ export class Conversation {
     }
 
     if (!p) {
-      p = this.newPerson(m.from, detectLang(text));
-      p.langFromText = text.length > 0;
+      // A first message with nothing of one language in it ("ok", a name) leaves the language open for the next one.
+      const sure = text ? detectLangOrNull(text) : null;
+      p = this.newPerson(m.from, sure ?? "en");
+      p.langFromText = sure !== null;
       p.stage = "onboarding";
       p.lastSeen = at;
       if (m.profileName) p.name = m.profileName;
@@ -248,8 +250,11 @@ export class Conversation {
     const switched = text && !(m.kind === "text" && m.spokenBy === "other") ? clearLang(text) : null;
     if (switched && p.langFromText && switched !== p.lang) p.lang = switched;
     if (!p.langFromText && text && !(m.kind === "text" && m.spokenBy === "other")) {
-      p.lang = detectLang(text);
-      p.langFromText = true;
+      const sure = detectLangOrNull(text);
+      if (sure) {
+        p.lang = sure;
+        p.langFromText = true;
+      }
     }
 
     if (m.profileName) p.name = m.profileName; // they may change it in WhatsApp

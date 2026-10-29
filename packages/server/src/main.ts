@@ -142,9 +142,13 @@ const conversation = new Conversation({
   },
   // Flights in the simulated data play out in real time from now; any other flight cannot be followed during the test.
   onTripConfirmed: async (p) => {
-    const legs = (p.trip as { legs?: Array<{ flight: string }> } | undefined)?.legs ?? [];
+    const legs = (p.trip as { legs?: Array<{ flight: string; from: string; to: string }> } | undefined)?.legs ?? [];
     const played = feed.idents();
-    const watching = legs.some((l) => played.includes(l.flight.replace(/\s+/g, "").toUpperCase()));
+    // The demo's flights by number and route: someone else's ZZ 1234 from another city is not followed.
+    const watching = legs.some((l) => {
+      const s = played.includes(l.flight.replace(/\s+/g, "").toUpperCase()) ? feed.findByIdent(l.flight) : undefined;
+      return Boolean(s && s.origin.iata === l.from && s.destination.iata === l.to);
+    });
     if (watching) {
       feed.restart(demoStartedAt.get(p.id));
       demoStartedAt.delete(p.id);

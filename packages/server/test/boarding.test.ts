@@ -166,3 +166,13 @@ describe("reminder the day before", () => {
   });
 });
 
+describe("another trip's flight with the same number", () => {
+  it("gets no reminder from the followed flight when its route differs (escenario 5, 29-oct)", async () => {
+    const person = { id: "x", lang: "en", stage: "ready", details: { checkedBags: 0 }, trip: { legs: [{ flight: "ZZ1234", date: "2026-11-02", from: "MEX", to: "ORD", dep_local: "08:00", arr_local: "12:00" }] } } as unknown as Person;
+    const sent: OutboundMessage[] = [];
+    const tick = createBoardingReminders({ feed: { findByIdent: () => first, now: () => Date.parse("2026-11-02T13:20:00Z") }, people: () => [person], send: async (_t, m) => void sent.push(m), windowOpen: () => true });
+    await tick();
+    expect(sent.filter((m) => m.kind === "text" && m.text.startsWith("🛫"))).toHaveLength(0);
+  });
+});
+

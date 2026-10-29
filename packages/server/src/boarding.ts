@@ -180,7 +180,8 @@ export function createBoardingReminders(deps: BoardingDeps) {
         const l = j[0]!;
         const tz = AIRPORTS[l.from]?.tz;
         if (!tz) continue;
-        const snap = deps.feed.findByIdent(l.flight);
+        const found = deps.feed.findByIdent(l.flight);
+        const snap = found && found.origin.iata === l.from && found.destination.iata === l.to ? found : undefined;
         const sameDay = snap?.departure.scheduled && new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(snap.departure.scheduled)) === l.date;
         const leaves = sameDay ? Date.parse(snap!.departure.estimated ?? snap!.departure.scheduled!) : legInstant(l.date, l.dep_local, l.from);
         if (!Number.isFinite(leaves) || now >= leaves) continue;
@@ -198,7 +199,11 @@ export function createBoardingReminders(deps: BoardingDeps) {
         await send(key, p, m, "day_before_reminder", {});
       }
 
-      const legs = ((p.trip as { legs?: Array<{ flight: string }> } | undefined)?.legs ?? []).map((l) => deps.feed.findByIdent(l.flight));
+      // Only a followed flight on the same route: another trip's ZZ 1234 from another city is not this one.
+      const legs = ((p.trip as { legs?: Array<{ flight: string; from: string; to: string }> } | undefined)?.legs ?? []).map((l) => {
+        const s = deps.feed.findByIdent(l.flight);
+        return s && (!l.from || s.origin.iata === l.from) && (!l.to || s.destination.iata === l.to) ? s : undefined;
+      });
       const open = deps.windowOpen(p.id);
 
       // Before check-in at the start of the trip, unless they said they carry everything on.
@@ -243,7 +248,7 @@ export function createBoardingReminders(deps: BoardingDeps) {
       // (trip was read above, for the day-before reminder)
       for (const stop of open && trip ? immigrationStops(trip) : []) {
         const s = deps.feed.findByIdent(stop.flight);
-        if (!s || s.cancelled) continue;
+        if (!s || s.cancelled || s.destination.iata !== stop.airport) continue;
         const key = `${p.id}|${s.flightId}|immigration`;
         if (told.has(key)) continue;
         const at = remindAt(s);
@@ -252,7 +257,7 @@ export function createBoardingReminders(deps: BoardingDeps) {
         const until = Number.isFinite(lands) ? lands - 20 * 60_000 : dep; // no arrival time: only until it leaves
         if (at === null || now < at || !(now < until)) continue;
         const d = p.details ?? {};
-        const facts = { stay: d.stay, stayWith: d.stayWith, stayAddress: d.stayAddress, purpose: d.purpose as Purpose | undefined };
+        const facts = { stay: d.stay, stayWith: d.stayWith, stayAddress: d.stayAddress, purpose: d.purpose as Purpose | undefined, passport: p.passport };
         const text = immigrationText(trip!, stop, facts, p.lang, Boolean(deps.speak));
         await send(key, p, { kind: "text", text }, "immigration_card", { country: stop.country, role: stop.role });
         // Each card in the officer's language, read aloud, after the text; it never holds up the other reminders.

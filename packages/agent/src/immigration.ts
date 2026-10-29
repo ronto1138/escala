@@ -37,6 +37,8 @@ export interface CardFacts {
   stayWith?: "friends" | "family" | "rental" | undefined;
   stayAddress?: string | undefined;
   purpose?: Purpose | undefined;
+  /** The passport they fly with: entering its own country, they are returning home, not visiting. */
+  passport?: string | undefined;
 }
 
 const pretty = (ident: string) => ident.replace(/^([A-Z0-9]{2})(\d+)$/, "$1 $2");
@@ -77,6 +79,7 @@ export function immigrationCard(trip: Trip, stop: ImmigrationStop, given: CardFa
     stayWith: flat(given.stay, 80) ? undefined : given.stayWith && STAY_WITH[given.stayWith] ? given.stayWith : undefined,
   };
   const langs = CARD_LANGS[stop.country] ?? ["en"];
+  const returning = stop.role === "entry" && Boolean(given.passport) && given.passport!.toUpperCase() === stop.country;
   const missing: Array<"purpose" | "stay" | "stay_address"> = [];
   const lines = (lang: Lang): string[] => {
     const out: string[] = [];
@@ -95,6 +98,11 @@ export function immigrationCard(trip: Trip, stop: ImmigrationStop, given: CardFa
           fr: `Je suis seulement en correspondance : ${when === "aujourd'hui" ? "je continue aujourd'hui" : `je continue ${when}`} vers ${to} sur le vol ${pretty(next.flight)}.`,
         }[lang]);
       }
+      return out;
+    }
+    if (returning) {
+      out.push({ en: "I am returning home.", es: "Regreso a casa.", fr: "Je rentre chez moi." }[lang]);
+      if (facts.stayAddress) out.push({ en: `My address: ${facts.stayAddress.replace(/[.\s]+$/, "")}.`, es: `Mi dirección: ${facts.stayAddress.replace(/[.\s]+$/, "")}.`, fr: `Mon adresse : ${facts.stayAddress.replace(/[.\s]+$/, "")}.` }[lang]);
       return out;
     }
     if (facts.purpose) out.push(PURPOSE_LINE[facts.purpose][lang]);
@@ -118,7 +126,7 @@ export function immigrationCard(trip: Trip, stop: ImmigrationStop, given: CardFa
     }
     return out;
   };
-  if (stop.role === "entry") {
+  if (stop.role === "entry" && !returning) {
     if (!facts.purpose) missing.push("purpose");
     if (!facts.stay && !facts.stayWith) missing.push("stay");
     else if (!facts.stayAddress) missing.push("stay_address");

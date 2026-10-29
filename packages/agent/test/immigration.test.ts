@@ -75,5 +75,15 @@ describe("immigration card", () => {
     expect(voiceLabel(montreal!, "fr", "es")).toBe("🔊 Montreal, en francés: para el oficial de migración de Canadá (tu llegada).");
     expect(voiceLabel(chicago!, "en", "en")).toBe("🔊 Chicago O'Hare, in English: for the United States immigration officer (your connection).");
   });
+
+  it("tells someone entering their own country that they are returning home, asking nothing else (escenario 3, 29-oct)", () => {
+    const [, montreal] = immigrationStops(viaChicago);
+    const c = immigrationCard(viaChicago, montreal!, { passport: "CA", stayAddress: "300 rue Fictive" });
+    expect(c.card).toEqual([
+      { lang: "en", lines: ["I am returning home.", "My address: 300 rue Fictive."] },
+      { lang: "fr", lines: ["Je rentre chez moi.", "Mon adresse : 300 rue Fictive."] },
+    ]);
+    expect(c.missing).toEqual([]);
+  });
 });
 

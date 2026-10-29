@@ -29,9 +29,22 @@ const EN_WORDS = ["hi", "hello", "the", "my", "flight", "what", "is", "are", "i"
 const ES_WORDS = ["hola", "mi", "vuelo", "qué", "gracias", "viaje", "está", "sí", "el", "la", "los", "las", "por", "para", "que", "es", "y", "tengo", "puedes"];
 const FR_WORDS = ["bonjour", "mon", "vol", "merci", "est-ce", "voyage", "je", "à", "oui", "le", "les", "c'est", "vous", "pour", "et", "est", "j'ai", "pouvez-vous"];
 
-export function detectLang(text: string): Lang {
+/** Words as typed, plus the same word without stretched letters ("holaa", "graciasss") when the typed one is unknown. */
+function tokensOf(lower: string): Set<string> {
+  const known = new Set([...EN_WORDS, ...ES_WORDS, ...FR_WORDS]);
+  const out = new Set<string>();
+  for (const t of lower.split(/[^\p{L}'-]+/u).filter(Boolean)) {
+    out.add(t);
+    const short = t.replace(/(\p{L})\1+/gu, "$1");
+    if (!known.has(t) && known.has(short)) out.add(short);
+  }
+  return out;
+}
+
+/** The language a message points to, or null when nothing in it belongs to one language ("ok", "👍", a name). */
+export function detectLangOrNull(text: string): Lang | null {
   const lower = text.toLowerCase();
-  const tokens = new Set(lower.split(/[^\p{L}'-]+/u).filter(Boolean));
+  const tokens = tokensOf(lower);
   const score = (words: string[], chars: string[]) =>
     words.reduce((n, w) => n + (tokens.has(w) ? 1 : 0), 0) + chars.reduce((n, c) => n + (lower.includes(c) ? 1 : 0), 0);
   // Only words that belong to one language; "me", "a", "no" and the like are shared and decide nothing.
@@ -40,7 +53,12 @@ export function detectLang(text: string): Lang {
   const fr = score(FR_WORDS, ["ç"]);
   if (es > fr && es > en) return "es";
   if (fr > es && fr > en) return "fr";
-  return "en";
+  if (en > 0 && en >= es && en >= fr) return "en";
+  return null;
+}
+
+export function detectLang(text: string): Lang {
+  return detectLangOrNull(text) ?? "en";
 }
 
 /**

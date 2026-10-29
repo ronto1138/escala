@@ -144,7 +144,10 @@ export function createNotifier(deps: NotifierDeps) {
     const now: ParticipantId[] = [];
     for (const p of deps.people()) {
       if (p.stage !== "ready") continue; // no trip yet, or STOP
-      const legs = ((p.trip as { legs?: Array<{ flight: string; date: string }> } | undefined)?.legs ?? []).filter((l) => norm(l.flight) === ident);
+      // Same flight number and the same route: another trip's ZZ 1234 from another city is not this one.
+      const legs = ((p.trip as { legs?: Array<{ flight: string; date: string; from?: string; to?: string }> } | undefined)?.legs ?? []).filter(
+        (l) => norm(l.flight) === ident && (!l.from || !snap.origin.iata || l.from === snap.origin.iata) && (!l.to || !snap.destination.iata || l.to === snap.destination.iata),
+      );
       // Same flight number within a day of the scheduled departure (local and UTC dates can differ by one).
       if (!legs.some((l) => Math.abs(Date.parse(l.date) - Date.parse(day)) <= 86_400_000)) continue;
       for (const e of events) {
