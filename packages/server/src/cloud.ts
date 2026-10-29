@@ -1,5 +1,5 @@
 import type { ChannelPort, InboundMessage, OutboundMessage, ParticipantId } from "@escala/channel";
-import { toCloudApi } from "@escala/channel";
+import { audioMessage, toCloudApi, validateOutbound } from "@escala/channel";
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_MEDIA_BYTES = 16 * 1024 * 1024;
@@ -81,11 +81,35 @@ export class CloudApiChannel implements ChannelPort {
     if (m.kind !== "template" && !this.windowOpen(to)) {
       throw new Error("outside the 24-hour window: only an approved template can be sent");
     }
-    const body = toCloudApi(sendableNumber(to), m); // validates WhatsApp's limits first
+    const body = m.kind === "voice" ? audioMessage(sendableNumber(to), await this.upload(m.audio)) : toCloudApi(sendableNumber(to), m); // validates WhatsApp's limits first
     const r = await this.graph(`${this.opts.phoneNumberId}/messages`, { method: "POST", body: JSON.stringify(body) });
     const id = (r as { messages?: Array<{ id?: string }> }).messages?.[0]?.id;
     if (!id) throw new CloudApiError(200, undefined, "no message id in the response");
     return { id };
+  }
+
+  /** Uploads a voice note to WhatsApp and returns its media id. */
+  private async upload(audio: Uint8Array): Promise<string> {
+    const problems = validateOutbound({ kind: "voice", audio });
+    if (problems.length) throw new Error(`invalid WhatsApp message: ${problems.join("; ")}`);
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", "audio/ogg");
+    form.append("file", new Blob([new Uint8Array(audio)], { type: "audio/ogg" }), "card.ogg");
+    const res = await this.opts.fetch(`https://graph.facebook.com/${this.opts.graphVersion}/${this.opts.phoneNumberId}/media`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.opts.accessToken}` },
+      body: form,
+      signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS),
+    });
+    let json: any = {};
+    try {
+      json = await res.json();
+    } catch {
+      json = {};
+    }
+    if (!res.ok || json.error || !json.id) throw new CloudApiError(res.status, json.error?.code, String(json.error?.message ?? "media upload failed").slice(0, 200));
+    return String(json.id);
   }
 
   /** Downloads a photo, document or voice note as a data URL, for the models. */

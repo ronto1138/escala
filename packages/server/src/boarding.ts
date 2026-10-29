@@ -1,6 +1,6 @@
 import type { OutboundMessage, ParticipantId } from "@escala/channel";
 import type { Lang, Person } from "@escala/conversation";
-import { immigrationStops, immigrationText, legInstant, type Purpose, type Trip } from "@escala/agent";
+import { immigrationCard, immigrationStops, immigrationText, legInstant, type Purpose, type Trip } from "@escala/agent";
 import { international, ruleFor, remindAt, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
 import { TEMPLATE, TEMPLATE_LANG } from "./notifier.ts";
 
@@ -11,6 +11,8 @@ export interface BoardingDeps {
   people(): Iterable<Person>;
   send(to: ParticipantId, m: OutboundMessage): Promise<unknown>;
   windowOpen(to: ParticipantId): boolean;
+  /** Reads a card aloud as a voice note; absent or null when speech is not available. */
+  speak?(text: string, lang: "en" | "es" | "fr"): Promise<Uint8Array | null>;
   /** "Ciudad de México" for "MEX" in Spanish; falls back to the code. */
   cityOf?(iata: string, lang: Lang): string | undefined;
   log?(event: Record<string, unknown>): void;
@@ -131,6 +133,18 @@ export function createBoardingReminders(deps: BoardingDeps) {
       sending.delete(key);
     }
   };
+  const voiceNotes = async (p: Person, cards: Array<{ lang: "en" | "es" | "fr"; lines: string[] }>) => {
+    for (const c of cards.filter((k) => k.lines.length)) {
+      const audio = await deps.speak!(c.lines.join(" "), c.lang);
+      if (!audio) continue;
+      try {
+        await deps.send(p.id, { kind: "voice", audio });
+        deps.log?.({ event: "immigration_card_voice", lang: c.lang });
+      } catch (err) {
+        deps.log?.({ event: "immigration_card_voice_failed", error: String(err).slice(0, 160) });
+      }
+    }
+  };
   return async function tick(): Promise<void> {
     const now = deps.feed.now?.() ?? Date.now();
     for (const p of deps.people()) {
@@ -189,8 +203,11 @@ export function createBoardingReminders(deps: BoardingDeps) {
         const until = Number.isFinite(lands) ? lands - 20 * 60_000 : dep; // no arrival time: only until it leaves
         if (at === null || now < at || !(now < until)) continue;
         const d = p.details ?? {};
-        const text = immigrationText(trip!, stop, { stay: d.stay, stayWith: d.stayWith, stayAddress: d.stayAddress, purpose: d.purpose as Purpose | undefined }, p.lang);
+        const facts = { stay: d.stay, stayWith: d.stayWith, stayAddress: d.stayAddress, purpose: d.purpose as Purpose | undefined };
+        const text = immigrationText(trip!, stop, facts, p.lang, Boolean(deps.speak));
         await send(key, p, { kind: "text", text }, "immigration_card", { country: stop.country, role: stop.role });
+        // Each card in the officer's language, read aloud, after the text; it never holds up the other reminders.
+        if (told.has(key) && deps.speak) void voiceNotes(p, immigrationCard(trip!, stop, facts).card);
       }
     }
   };

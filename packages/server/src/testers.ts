@@ -82,6 +82,8 @@ export function outboundText(m: OutboundMessage): { kind: string; text: string }
       return { kind: "list", text: `${m.text}\n${m.sections.flatMap((s) => s.rows.map((r) => `· ${r.title}`)).join("\n")}` };
     case "template":
       return { kind: "template", text: `${m.name} ${JSON.stringify(m.bodyParams ?? [])}` };
+    case "voice":
+      return { kind: "voice", text: `[voice note, ${m.audio.length} bytes]` }; // the audio itself is never kept
   }
 }
 

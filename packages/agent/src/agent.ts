@@ -39,6 +39,8 @@ export interface AgentDeps {
   convertCurrency?: ReturnType<typeof createRates>;
   /** Sends a message right away, before the answer: the line said while a web search runs. */
   progress?: (personId: string, text: string) => Promise<void>;
+  /** Reads a card aloud as a voice note (OGG/Opus); null when it could not. Without it, cards go as text only. */
+  speak?: (text: string, lang: Lang) => Promise<Uint8Array | null>;
 }
 
 /** What a shared location becomes for the agent: the place is given separately, in the instructions. */
@@ -448,7 +450,7 @@ export function createEscalaAgent(
   const asked = new Map<string, string[]>(); // person -> facts already asked about
   // Messages a tool sends as they are (the claim letter), after the answer, so the traveler can copy them whole.
   // Kept per person: two travelers' turns run at the same time.
-  const outboxes = new Map<string, OutboundMessage[]>();
+  const outboxes = new Map<string, Array<OutboundMessage | Promise<OutboundMessage | null>>>();
   const currentText = new Map<string, string>(); // person -> the message being answered
   const askedAt = new Map<string, number>();
   // The last turns come from the conversation (`person.recent`, kept encrypted and across restarts), so an answer can
@@ -627,8 +629,10 @@ export function createEscalaAgent(
     }
     // Learning runs after the answer and never delays it; a failure only means nothing is learned this turn.
     if (deps.learner && deps.memory) void learn(question, p, m.id, m.at, trip).catch((err) => trace({ kind: "fallback", reason: `learning failed: ${String(err).slice(0, 120)}` }));
-    replies.push({ kind: "text", text: draft }, ...(outboxes.get(p.id) ?? []));
+    // Voice notes were being recorded while the model wrote the answer; one that failed is left out.
+    const extra = (await Promise.all(outboxes.get(p.id) ?? [])).filter((x): x is OutboundMessage => x !== null);
     outboxes.delete(p.id);
+    replies.push({ kind: "text", text: draft }, ...extra);
     return replies;
   }
 
@@ -964,8 +968,18 @@ export function createEscalaAgent(
       if (!trip || !stops.length) return { none: "this route meets no immigration officer (or no itinerary yet)" };
       const d = p.details ?? {};
       const facts = { stay: d.stay, stayWith: d.stayWith, stayAddress: d.stayAddress, purpose: d.purpose as Purpose | undefined };
+      const cards = stops.map((s) => immigrationCard(trip, s, facts));
+      const voiced = Boolean(deps.speak);
+      if (deps.speak) {
+        const speak = deps.speak;
+        const notes = cards.flatMap((c) => c.card.filter((k) => k.lines.length)).map((k) =>
+          speak(k.lines.join(" "), k.lang).then((audio) => (audio ? ({ kind: "voice", audio } as OutboundMessage) : null)).catch(() => null),
+        );
+        outboxes.set(p.id, [...(outboxes.get(p.id) ?? []), ...notes]);
+      }
       return {
-        stops: stops.map((s) => immigrationCard(trip, s, facts)),
+        stops: cards,
+        voice_notes: voiced ? "each card also goes right after your answer as a voice note in the officer's language: say in one line it is to listen to before landing to practice, and to play only if the officer allows" : null,
         note: "give each card as written, starting with \"📋\", and say to screenshot it before landing; at the officer's booth they read or show it, never record or call. If something is missing, ask for it in one line; never add a fact the card does not have",
       };
     }

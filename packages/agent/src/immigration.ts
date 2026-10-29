@@ -155,12 +155,19 @@ const ADD: Record<Lang, (xs: string) => string> = {
   fr: (x) => `Si vous me dites ${x}, je l'ajoute à la carte.`,
 };
 
+/** Said when the card also goes as a voice note: what it is for, without promising the booth allows it. */
+const VOICE: Record<Lang, string> = {
+  en: "🔊 Below, the card read aloud: listen before you land to practice it. If the officer lets you, you can play it.",
+  es: "🔊 Abajo te mando la tarjeta en audio: escúchala antes de aterrizar para practicarla. Si el oficial te lo permite, puedes ponérsela.",
+  fr: "🔊 Ci-dessous, la carte lue à voix haute : écoutez-la avant d'atterrir pour vous entraîner. Si l'agent le permet, vous pouvez la lui faire écouter.",
+};
+
 /** The message sent before the flight that lands at an immigration stop: a heads-up plus the card. */
-export function immigrationText(trip: Trip, stop: ImmigrationStop, facts: CardFacts, lang: Lang): string {
+export function immigrationText(trip: Trip, stop: ImmigrationStop, facts: CardFacts, lang: Lang, voice = false): string {
   const c = immigrationCard(trip, stop, facts);
   const city = cityName(stop.airport, lang);
   const cards = c.card.filter((k) => k.lines.length).map((k) => `📋 ${k.lines.join(" ")}`);
   const ask = c.missing.length ? ADD[lang](c.missing.map((m) => MISSING[lang][m]).join(lang === "en" ? " and " : lang === "es" ? " y " : " et ")) : "";
   const head = HEAD[lang](city, stop.role === "transit" && stop.country === "US");
-  return [cards.length ? `${head} ${SNAP[lang]}` : head, ...cards, ask].filter(Boolean).join("\n\n");
+  return [cards.length ? `${head} ${SNAP[lang]}` : head, ...cards, ask, voice && cards.length ? VOICE[lang] : ""].filter(Boolean).join("\n\n");
 }

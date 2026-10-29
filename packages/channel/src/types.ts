@@ -39,7 +39,9 @@ export type OutboundMessage =
   | { kind: "buttons"; text: string; buttons: Button[]; header?: string; footer?: string }
   | { kind: "list"; text: string; buttonLabel: string; sections: ListSection[]; header?: string; footer?: string }
   /** Approved message template: the only kind allowed outside the 24-hour customer service window. */
-  | { kind: "template"; name: string; language: string; bodyParams?: string[] };
+  | { kind: "template"; name: string; language: string; bodyParams?: string[] }
+  /** A voice note Escala recorded (OGG/Opus), such as the immigration card read aloud. */
+  | { kind: "voice"; audio: Uint8Array };
 
 export interface ChannelPort {
   onInbound(handler: (m: InboundMessage) => Promise<void>): void;

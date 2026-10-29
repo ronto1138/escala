@@ -3,3 +3,9 @@ Copyright 2026 Kokorio, S.A.P.I. de C.V.
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 It was built during the Meta Global AI Developer Hackathon (Oct 26 - Nov 4, 2026).
+
+Third-party components bundled in the container image:
+- Kokoro-82M (hexgrad), Apache License 2.0: the speech model that reads the immigration card aloud.
+  https://huggingface.co/hexgrad/Kokoro-82M
+- kokoro-onnx (github.com/thewh1teagle), MIT License, and its int8 model files.
+  https://github.com/thewh1teagle/kokoro-onnx

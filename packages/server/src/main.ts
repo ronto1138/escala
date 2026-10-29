@@ -1,7 +1,7 @@
 // Runs Escala on WhatsApp: the webhook, the conversation, the agent, the rules and the encrypted memory.
 // Flights come from the replay feed (simulated data) until a flight data provider is connected.
 // Listens on 127.0.0.1 by default: exposing it to the Internet is a separate, deliberate step.
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,7 @@ import { ConversationStore, MemoryCrypto, MemoryStore } from "@escala/memory";
 import { createMetaClient, createOpenModelClient, fileSink, responsesViaOpen, type UsageLine } from "@escala/meta-client";
 import { loadEntries } from "@escala/rights";
 import { toWav, tripKeywords } from "./audio.ts";
+import { createSpeech } from "./speech.ts";
 import { Budget } from "./budget.ts";
 import { CloudApiChannel } from "./cloud.ts";
 import { createNotifier } from "./notifier.ts";
@@ -84,8 +85,13 @@ const feed = new ReplayClock(demoScenario, {
 const DEMO_FLIGHTS = ["ZZ1234", "ZZ567"];
 const demoStartedAt = new Map<string, number>();
 
+// The immigration card read aloud, on this server (Kokoro, in the image under /opt/tts). Off when the models are absent.
+const speak = existsSync(`${env.TTS_MODELS ?? "/opt/tts"}/kokoro-v1.0.int8.onnx`) ? createSpeech({ models: env.TTS_MODELS ?? "/opt/tts", log }) : undefined;
+log({ event: "speech", on: Boolean(speak) });
+
 // What the agent decided, for the operations report: counts and kinds only, never content.
 const escala = createEscalaAgent({
+  ...(speak ? { speak } : {}),
   client, feed, entries: loadEntries(), media: channel, memory, ...(learner ? { learner } : {}), convertCurrency: createRates(),
   progress: async (id, text) => void (await channel.send(id, { kind: "text", text })),
   trace: (s: TraceStep) => log(traceEvent(s)),
@@ -243,6 +249,7 @@ const boarding = createBoardingReminders({
   send: (to, m) => channel.send(to, m),
   windowOpen: (to) => channel.windowOpen(to),
   cityOf: (code, lang) => cityName(code, lang),
+  ...(speak ? { speak } : {}),
   log,
 });
 setInterval(() => void boarding().catch((err) => log({ event: "error", why: "boarding", error: String(err).slice(0, 120) })), 15_000).unref();

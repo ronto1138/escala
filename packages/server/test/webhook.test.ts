@@ -98,6 +98,22 @@ describe("Cloud API channel", () => {
     await expect(ch.send("15550001111", { kind: "text", text: "Still there?" })).rejects.toThrow(/24-hour window/);
   });
 
+  it("uploads a voice note, then sends it by its media id", async () => {
+    const calls: Array<{ url: string; init: any }> = [];
+    const replies = [{ id: "media-1" }, { messages: [{ id: "wamid.voice" }] }];
+    const fetchSeq = (async (url: string, init: any) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify(replies.shift()), { status: 200 });
+    }) as unknown as typeof fetch;
+    const now = Date.parse("2026-11-02T12:00:00Z");
+    const ch = new CloudApiChannel({ accessToken: "TOKEN", phoneNumberId: "123", fetch: fetchSeq, now: () => now });
+    await ch.deliver({ id: "wamid.in", from: "15550001111", at: "2026-11-02T11:59:00Z", kind: "text", text: "hi" });
+    expect(await ch.send("15550001111", { kind: "voice", audio: new Uint8Array([79, 103, 103, 83]) })).toEqual({ id: "wamid.voice" });
+    expect(calls[0]!.url).toBe("https://graph.facebook.com/v26.0/123/media");
+    expect(calls[0]!.init.body).toBeInstanceOf(FormData);
+    expect(JSON.parse(calls[1]!.init.body)).toMatchObject({ type: "audio", audio: { id: "media-1" }, to: "15550001111" });
+  });
+
   it("reports Meta's error without leaking the token", async () => {
     const calls: Array<{ url: string; init: any }> = [];
     const ch = new CloudApiChannel({ accessToken: "SECRET-TOKEN", phoneNumberId: "123", fetch: fakeFetch(calls, { error: { message: "Invalid parameter", code: 100 } }, 400), now: () => Date.parse("2026-11-02T12:00:00Z") });

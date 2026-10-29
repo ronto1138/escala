@@ -1,0 +1,3 @@
+# Speech for the immigration card. Exact versions; resolved for the image's Python (Debian bookworm, 3.11).
+kokoro-onnx==0.4.9
+soundfile==0.14.0

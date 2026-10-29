@@ -75,8 +75,17 @@ export function validateOutbound(m: OutboundMessage): string[] {
       required("template name", m.name);
       required("template language", m.language);
       break;
+    case "voice":
+      if (!m.audio.length) p.push("voice note is empty");
+      if (m.audio.length > 16 * 1024 * 1024) p.push("voice note is larger than 16 MB");
+      break;
   }
   return p;
+}
+
+/** The JSON body that sends an uploaded voice note. */
+export function audioMessage(to: string, mediaId: string): Record<string, unknown> {
+  return { messaging_product: "whatsapp", recipient_type: "individual", to, type: "audio", audio: { id: mediaId } };
 }
 
 /** Builds the JSON body for POST /{phone-number-id}/messages. Throws if WhatsApp would reject it. */
@@ -119,6 +128,8 @@ export function toCloudApi(to: string, m: OutboundMessage): Record<string, unkno
           },
         },
       };
+    case "voice":
+      throw new Error("a voice note is uploaded first: use audioMessage with its media id");
     case "template":
       return {
         ...base,

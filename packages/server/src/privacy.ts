@@ -88,6 +88,9 @@ and what a voice note was heard as) to find mistakes and improve Escala. Use mad
   <li>The last turns of the conversation (at most 12, for up to 48 hours), where you are in it and your trip are kept encrypted the same
   way, so Escala understands a reply in context, even after a restart. They expire on the same rules as below.</li>
   <li>Voice notes are converted to text (Muse Voice Transcribe) and then handled like a written message; the audio itself is not kept.</li>
+  <li>The immigration card can also be sent to you read aloud. It is read by an open speech model (Kokoro) running on Escala's own
+  server, so the card's text is not sent to anyone for that; the audio is kept only in memory, to send it again, and is gone when
+  the server restarts.</li>
   <li>If you share your location in WhatsApp, Escala uses it for directions and nearby suggestions: it goes to Meta's model with your
   question, is kept encrypted for two hours and then deleted, and is never remembered for future trips.</li>
   <li>If your trip crosses borders, Escala asks which passport you fly with, only the country, never its number, to tell you

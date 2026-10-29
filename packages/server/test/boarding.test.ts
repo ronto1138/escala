@@ -100,4 +100,29 @@ describe("immigration card before the flight", () => {
     expect(cards).toHaveLength(1);
     expect((cards[0] as { text: string }).text).toContain("📋 I am only connecting: today I fly on to Montreal on flight ZZ 567.");
   });
+
+  it("reads each card aloud after the text, once, in the officer's language", async () => {
+    const intl = { ...first, origin: { iata: "MEX", icao: "MMMX", timezone: "America/Mexico_City" } } as FlightSnapshot;
+    const trip = { bookingRef: null, legs: [
+      { flight: "ZZ1234", date: "2026-11-02", from: "MEX", to: "ORD", dep_local: "14:50", arr_local: "17:15" },
+      { flight: "ZZ567", date: "2026-11-02", from: "ORD", to: "YUL", dep_local: "19:30", arr_local: "22:40" },
+    ] };
+    const person = { id: "a", lang: "es", stage: "ready", details: { checkedBags: 0 }, trip } as unknown as Person;
+    const sent: OutboundMessage[] = [];
+    const spoken: string[] = [];
+    const tick = createBoardingReminders({
+      feed: { findByIdent: (i) => (i === "ZZ1234" ? intl : second), now: () => Date.parse("2026-11-02T20:00:00Z") },
+      people: () => [person], send: async (_to, m) => void sent.push(m), windowOpen: () => true, cityOf: () => "Ciudad de México",
+      speak: async (text, lang) => (spoken.push(`${lang}: ${text}`), new Uint8Array([1, 2, 3])),
+    });
+    await tick();
+    await tick();
+    await new Promise((r) => setTimeout(r, 10));
+    const card = sent.find((m) => "text" in m && m.text.startsWith("🛂")) as { text: string };
+    expect(card.text).toContain("🔊 Abajo te mando la tarjeta en audio");
+    expect(spoken).toEqual(["en: I am only connecting: today I fly on to Montreal on flight ZZ 567."]);
+    expect(sent.filter((m) => m.kind === "voice")).toHaveLength(1);
+    expect(sent.findIndex((m) => m.kind === "voice")).toBeGreaterThan(sent.indexOf(card as OutboundMessage));
+  });
 });
+
