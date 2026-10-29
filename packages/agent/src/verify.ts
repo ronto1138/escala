@@ -89,6 +89,8 @@ export function extractClaims(raw: string): Claim[] {
   const RANGE = String.raw`(${NUM})(?:[\s\u00a0\u202f]*(?:-|–|—|\bto\b|\ba\b|\bà\b|\by\b|\bet\b|\band\b|\bor\b|\bo\b|\bou\b)[\s\u00a0\u202f]*(${NUM}))?`;
   for (const m of text.matchAll(new RegExp(String.raw`(${CUR})${SPO}${RANGE}`, "gi"))) {
     const c = cur(m[1]!);
+    // "UMA 2026" names the year's unit (Mexico recalculates it every February); it is not 2026 UMA.
+    if (c === "UMA" && !m[3] && /^20\d\d$/.test(m[2]!)) continue;
     push({ kind: "amount", text: m[0], value: parseNumber(m[2]!), currency: c, ...weightWord(m[1]!) }, m.index!);
     if (m[3]) push({ kind: "amount", text: m[0], value: parseNumber(m[3]), currency: c, ...weightWord(m[1]!) }, m.index! + 1);
   }

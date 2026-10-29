@@ -124,7 +124,7 @@ describe("rights base expansion (Oct 26)", () => {
 
 describe("battery (Oct 26): years and pesos", () => {
   it("reads a four-digit number without separators as one number", () => {
-    expect(extractClaims("UMA 2026")[0]).toMatchObject({ value: 2026, currency: "UMA" });
+    expect(extractClaims("MXN 2026")[0]).toMatchObject({ value: 2026, currency: "MXN" });
     expect(extractClaims("1,075 USD")[0]).toMatchObject({ value: 1075 });
   });
 
@@ -164,4 +164,9 @@ describe("clock times", () => {
     expect(extractClaims("boarding at 7:55 hours local")).toEqual([]);
     expect(extractClaims("about 50 hours late").map((c) => c.value)).toEqual([50]);
   });
+
+  it("reads \"UMA 2026\" as the year's unit, not as an amount (battery B, D12, 29-oct)", () => {
+    expect(extractClaims("hasta 150 UMA (UMA 2026)").map((c) => c.value)).toEqual([150]);
+  });
 });
+

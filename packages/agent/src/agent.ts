@@ -6,6 +6,7 @@ import { ConsentError, tripRetention, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
 import { forWhatsApp, legLine } from "./format.ts";
 import { evidenceReply, readBoardingPass, readEvidence, type EvidenceObject } from "./evidence.ts";
+import { BAG_PROBLEMS, draftClaim, ESCALATION, type BagProblem } from "./claim.ts";
 import { convertUnits, mapsLink, RIGHTS_TOPIC, searchTravel, UNIT_NAMES, type createRates } from "./guide.ts";
 import { crossesBorder, documentsFor, passportFromStatement } from "./documents.ts";
 import { RENTAL_CARS } from "./rentals.ts";
@@ -185,6 +186,33 @@ const TOOLS = [
         checked_bags: { type: ["integer", "null"], description: "how many bags they check; 0 = carry-on only" },
         bag_kg: { type: ["number", "null"], description: "weight of the checked bag in kg (convert from lb with convert first)" },
         rental_car: { type: ["string", "null"], description: "rental company name; 'yes' if renting without saying which; 'no' if not renting" },
+      },
+    },
+    strict: true,
+  },
+  {
+    type: "function",
+    name: "draft_claim",
+    description:
+      "Writes the traveler's written claim to the airline for a delayed, lost or damaged checked bag, from the rules that apply, what they told you and the evidence kept. " +
+      "Use when they want to claim or ask what to send the airline. It sends the letter as its own message; you only say in a few lines what to do with it, the deadline and what is still missing.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["flight", "problem", "report_reference", "bag_delivered_on", "bag_delivered_days_ago", "bag_delay_h", "expenses", "letter_lang"],
+      properties: {
+        flight: { type: "string", description: "the flight the bag was checked on to its destination (the last leg it flew)" },
+        problem: { type: "string", enum: ["bag_delayed", "bag_lost", "bag_damaged"] },
+        report_reference: { type: ["string", "null"], description: "the file number of the bag report the airline gave them, only if they said it" },
+        bag_delivered_on: { type: ["string", "null"], description: "YYYY-MM-DD when the airline handed the bag over, only if they wrote that date; null when they said how long ago (use bag_delivered_days_ago)" },
+        bag_delivered_days_ago: { type: ["integer", "null"], description: "when they say how long ago they got the bag (\"20 days ago\" = 20, \"today\" or a damaged bag found at the belt now = 0); null if they did not say" },
+        bag_delay_h: { type: ["number", "null"], description: "hours after them the bag arrived, if they said it or it follows from what they said" },
+        expenses: {
+          type: "array",
+          description: "what they spent because of it, only amounts they gave",
+          items: { type: "object", additionalProperties: false, required: ["what", "amount", "currency"], properties: { what: { type: "string" }, amount: { type: "number" }, currency: { type: "string", description: "ISO code, e.g. USD, CAD, MXN, EUR" } } },
+        },
+        letter_lang: { type: "string", enum: ["en", "es", "fr"], description: "the language the airline handles claims in; English when unsure" },
       },
     },
     strict: true,
@@ -418,6 +446,8 @@ export function createEscalaAgent(
   const longestClaimDays = longestDeadlineDays(deps.entries);
   const checking = createChecking();
   const asked = new Map<string, string[]>(); // person -> facts already asked about
+  // Messages a tool sends as they are (the claim letter), after the answer, so the traveler can copy them whole.
+  let outbox: OutboundMessage[] = [];
   const askedAt = new Map<string, number>();
   // The last turns come from the conversation (`person.recent`, kept encrypted and across restarts), so an answer can
   // build on what was said before ("it was the crew"), including Escala's own questions.
@@ -585,6 +615,7 @@ export function createEscalaAgent(
     const allowed: Allowed = { amounts: [], percents: [], durations: extractClaims(m.text).filter((c) => c.kind === "duration").map((c) => c.value) };
     const question = inScope.map((x) => x.text).join(" ");
     askedAt.set(p.id, at);
+    outbox = [];
     let draft = await answer(question, p, trip, allowed, recentTurns(p, at));
     if (!draft.trim()) {
       // The model sometimes spends its whole budget reasoning and writes nothing; WhatsApp rejects empty text.
@@ -593,7 +624,8 @@ export function createEscalaAgent(
     }
     // Learning runs after the answer and never delays it; a failure only means nothing is learned this turn.
     if (deps.learner && deps.memory) void learn(question, p, m.id, m.at, trip).catch((err) => trace({ kind: "fallback", reason: `learning failed: ${String(err).slice(0, 120)}` }));
-    replies.push({ kind: "text", text: draft });
+    replies.push({ kind: "text", text: draft }, ...outbox);
+    outbox = [];
     return replies;
   }
 
@@ -654,6 +686,7 @@ export function createEscalaAgent(
       "Ask at most one question, and only the one rights_for_trip returned or one needed to answer; don't end with offers phrased as questions. " +
       "You give information with sources, not legal advice; never promise compensation. Never book anything, and offer only what you can do: you cannot see other flights or seats. " +
       "Entry and transit documents: when the traveler tells which passport they fly with, call set_passport (dual nationals: the one they fly with), then documents_for_trip, and say for each country on the route (leaving, the connection, arriving) what it asks and which forms to fill, naming the official site (\"canada.ca, Oct 28\"); write a full link only where they must go to fill something (like the FEM). Keep it short. " +
+      "Bag claims: when they want to claim for a delayed, lost or damaged bag, call rights_for_trip and then draft_claim; never write the letter yourself. Say first, in a few lines, where to send it (the airline's baggage claim form or customer relations, keeping proof of sending), the deadline it returns and the blanks still to fill; Escala never takes a cut and this is not legal advice. " +
       "Immigration: when they ask what the officer will ask, how to prepare, or what to answer, call immigration_card and give its cards as written; never script anything the card does not hold (no invented ties, money or reasons), and don't describe what happens at the booth (stamps, questions, steps): you have no source for it. " +
       "Never state a visa, authorization or entry requirement that documents_for_trip did not return; for a country it does not cover, say you don't have it verified yet and give its official page; if a rule is NO_VERIFICADO, say so. " +
       "You cannot message other people yet: if asked to tell someone something, say so kindly and give a short ready-to-forward message in the traveler's language with only what they told you or the trip shows. " +
@@ -1037,6 +1070,55 @@ export function createEscalaAgent(
       const topic = given(args.topic);
       const n = args.everything === true ? deps.memory.forget(p.id, "all") : factId ? deps.memory.forget(p.id, { factId }) : topic ? deps.memory.forget(p.id, { topic }) : 0;
       return { forgotten: n };
+    }
+    if (name === "draft_claim") {
+      if (!trip) return { error: "no itinerary yet" };
+      const leg = trip.legs.find((l) => norm(l.flight) === norm(String(args.flight))) ?? trip.legs.at(-1)!;
+      const problem = (BAG_PROBLEMS as readonly string[]).includes(String(args.problem)) ? (String(args.problem) as BagProblem) : null;
+      if (!problem) return { error: "problem must be bag_delayed, bag_lost or bag_damaged" };
+      const given = (v: unknown) => (typeof v === "string" && v.trim() && !/^(null|none|undefined|n\/a)$/i.test(v.trim()) ? v.trim() : undefined);
+      const reportRef = given(args.report_reference);
+      const facts: TripFacts = { ...factsFor(trip, leg.flight, deps.airlines), disruption: problem, mobility_device: false, ...(reportRef ? { bag_report_filed: true } : {}) };
+      if (typeof args.bag_delay_h === "number" && args.bag_delay_h > 0) facts.bag_delay_h = args.bag_delay_h;
+      const a = assess(deps.entries, facts, { lang: p.lang, alreadyAsked: [] });
+      const byId = new Map(deps.entries.map((e) => [e.id, e]));
+      const applying = a.citable.filter((r) => r.outcome === "applies").map((r) => byId.get(r.id)!);
+      const rules = applying.filter((e) => !ESCALATION.has(e.id)).map((e) => ({ id: e.id, instrument: e.instrument, article: e.article, source: e.source_url, ...(e.deadlines ? { deadlines: e.deadlines } : {}) }));
+      const escalation = applying.filter((e) => ESCALATION.has(e.id)).map((e) => cite(e, p.lang));
+      for (const e of escalation) numbersIn(byId.get(e.id)!.deadlines ?? {}).forEach((n) => allowed.durations.push(n));
+      if (!rules.length) return { error: "no rule applies to this bag on this trip: say so, and what rights_for_trip says instead" };
+      const kept = deps.memory ? (["bag", "bag_tag"] as const).flatMap((o) => deps.memory!.recall(p.id, { topic: `evidence.${o}` }).slice(0, 1).map((f) => ({ what: o, at: f.source.at, tagNumber: (f.data?.tagNumber as string | undefined) }))) : [];
+      const expenses = (Array.isArray(args.expenses) ? args.expenses : [])
+        .filter((e: any) => typeof e?.amount === "number" && typeof e?.currency === "string" && typeof e?.what === "string")
+        .map((e: any) => ({ what: scrub(e.what), amount: e.amount, currency: e.currency.toUpperCase().slice(0, 3) }));
+      const lang = (["en", "es", "fr"] as const).includes(args.letter_lang) ? (args.letter_lang as Lang) : "en";
+      const today = (currentMessage.at || new Date().toISOString()).slice(0, 10);
+      // Days ago is counted here, not by the model: a wrong date would move the deadline.
+      const ago = Number.isInteger(args.bag_delivered_days_ago) && args.bag_delivered_days_ago >= 0 && args.bag_delivered_days_ago < 400 ? args.bag_delivered_days_ago : null;
+      const deliveredOn = ago !== null ? new Date(Date.parse(`${today}T12:00:00Z`) - ago * 86_400_000).toISOString().slice(0, 10) : given(args.bag_delivered_on);
+      const claim = draftClaim({ trip, leg, problem, rules, reportRef, deliveredOn, expenses, evidence: kept, lang, tz: AIRPORTS[trip.legs[0]!.from]?.tz, today });
+      for (const r of rules) numbersIn(r.deadlines ?? {}).forEach((n) => allowed.durations.push(n));
+      // A letter sent after the deadline the rule sets would promise something the rule already took away.
+      if (claim.deadline?.passed) {
+        return {
+          deadline_passed: claim.deadline,
+          next: "say plainly that the deadline in this rule passed on deadline_passed.date (give that date exactly), so no letter was written; do not promise anything. If the airline still has a complaint channel, or if they claimed in time some other way (a report at the airport), say that is what to check.",
+          if_the_airline_does_not_answer: escalation,
+        };
+      }
+      outbox.push({ kind: "text", text: claim.letter });
+      for (const e of expenses) allowed.amounts.push({ currency: e.currency, value: e.amount });
+      return {
+        letter: "it goes right after your text as a separate message: call it 'the letter below'",
+        letter_language: lang,
+        rules: rules.map((r) => `${r.instrument}, art. ${r.article}`),
+        deadline: claim.deadline,
+        deadline_note: claim.deadline ? null : "the deadline runs from the day the bag is handed over: say how many days and from when",
+        blanks_to_fill: claim.missing,
+        if_the_airline_does_not_answer: escalation,
+        sources: rules.map((r) => r.source),
+        note: "do not repeat the letter; say what to do with it in a few lines",
+      };
     }
     if (name === "rights_for_trip") {
       if (!trip) return { error: "no itinerary yet" };
