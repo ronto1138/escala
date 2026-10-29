@@ -189,7 +189,7 @@ export function createBoardingReminders(deps: BoardingDeps) {
         const until = Number.isFinite(lands) ? lands - 20 * 60_000 : dep; // no arrival time: only until it leaves
         if (at === null || now < at || !(now < until)) continue;
         const d = p.details ?? {};
-        const text = immigrationText(trip!, stop, { stay: d.stay, stayAddress: d.stayAddress, purpose: d.purpose as Purpose | undefined }, p.lang);
+        const text = immigrationText(trip!, stop, { stay: d.stay, stayWith: d.stayWith, stayAddress: d.stayAddress, purpose: d.purpose as Purpose | undefined }, p.lang);
         await send(key, p, { kind: "text", text }, "immigration_card", { country: stop.country, role: stop.role });
       }
     }

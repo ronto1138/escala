@@ -232,7 +232,8 @@ channel.send = async (to, m) => {
 };
 
 // Flight changes become messages: free text inside the 24-hour window, the approved template outside it.
-const notify = createNotifier({ send: (to, m) => channel.send(to, m), windowOpen: (to) => channel.windowOpen(to), people: () => conversation.people.values(), log });
+// A delay and two gate changes seconds apart go out as one update.
+const notify = createNotifier({ send: (to, m) => channel.send(to, m), windowOpen: (to) => channel.windowOpen(to), people: () => conversation.people.values(), log, coalesceMs: 20_000 });
 feed.subscribe((events, snap) => void notify(events, snap));
 
 // Heading to the gate: once per flight, ahead of what the airline publishes (boarding starts, be at the gate, gate closes).

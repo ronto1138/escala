@@ -48,4 +48,19 @@ describe("flight alerts", () => {
     await notify([late], snap);
     expect(sent.map((s) => s.to)).toEqual(["c"]);
   });
+
+  it("sends changes that arrive close together as one update (judge session 29-oct: five alerts in seconds)", async () => {
+    const sent: Array<{ to: string; m: OutboundMessage }> = [];
+    const people = [person("c", { lang: "en", trip: { legs: [{ flight: "ZZ1234", date: "2026-11-02" }, { flight: "ZZ567", date: "2026-11-02" }] } })];
+    const notify = createNotifier({ send: async (to, m) => (sent.push({ to, m }), { id: "x" }), windowOpen: () => true, people: () => people, coalesceMs: 30 });
+    await notify([late], snap);
+    const gate: FlightEvent = { kind: "gate_change", flightId: "f2", at: "2026-11-02T12:01:00Z", inference: false, side: "departure", from: null, to: "E5" } as FlightEvent;
+    await notify([gate], { ...snap, ident: "ZZ567" } as FlightSnapshot);
+    expect(sent).toHaveLength(0);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(sent).toHaveLength(1);
+    const text = (sent[0]!.m as { text: string }).text;
+    expect(text).toMatch(/^✈️ Updates:\n• flight ZZ 1234 now arrives about 100 min late\n• flight ZZ 567 has its departure gate: E5\nReply/);
+  });
 });
+

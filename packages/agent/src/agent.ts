@@ -14,7 +14,7 @@ import { immigrationCard, immigrationStops, PURPOSES, type Purpose } from "./imm
 import { createChecking, describeLocation, legInstant, localClock, locationIsFresh, usableCheckingLine, whereNow } from "./whereabouts.ts";
 import { acceptCandidates, proposeFacts } from "./learner.ts";
 import { extractTrip, scopeGuard, whoSpeaks, type MediaLoader, type ScopePart } from "./models.ts";
-import { cityName, factsFor, journeys, norm, type Airlines, type Trip } from "./trip.ts";
+import { AIRPORTS, cityName, factsFor, journeys, norm, type Airlines, type Trip } from "./trip.ts";
 import { extractClaims, numbersIn, verify, type Allowed, type Verdict } from "./verify.ts";
 
 export interface AgentDeps {
@@ -92,10 +92,17 @@ export type TraceStep =
 
 const LANG_NAME: Record<Lang, string> = { en: "English", es: "Spanish (Mexico)", fr: "French (use vous)" };
 
-const DECLINE: Record<Lang, (reasons: string) => string> = {
-  en: (r) => `That one I can't help with: I'm only here for your trip (${r}).`,
-  es: (r) => `Con eso no te puedo ayudar: solo estoy para tu viaje (${r}).`,
-  fr: (r) => `Pour ça, je ne peux pas vous aider : je suis là seulement pour votre voyage (${r}).`,
+/** The guard's reasons are for the trace, not for the traveler: they read as a debugging screen. */
+const DECLINE: Record<Lang, (partial: boolean) => string> = {
+  en: (partial) => partial
+    ? "I left part of your message out: I'm only here for your trip."
+    : "I can't help with that one: I'm only here for your trip. Ask me about your flights, connections, bags, documents or where you're going.",
+  es: (partial) => partial
+    ? "Dejé fuera parte de tu mensaje: solo estoy para tu viaje."
+    : "Con eso no te puedo ayudar: solo estoy para tu viaje. Pregúntame por tus vuelos, conexiones, maletas, documentos o a dónde vas.",
+  fr: (partial) => partial
+    ? "J'ai laissé de côté une partie de votre message : je suis là seulement pour votre voyage."
+    : "Pour ça, je ne peux pas vous aider : je suis là seulement pour votre voyage. Demandez-moi vos vols, correspondances, bagages, documents ou votre destination.",
 };
 
 /** Facts the model may pass from what the traveler said; everything else comes from the itinerary and data. */
@@ -169,9 +176,10 @@ const TOOLS = [
     parameters: {
       type: "object",
       additionalProperties: false,
-      required: ["stay", "stay_address", "purpose", "checked_bags", "bag_kg", "rental_car"],
+      required: ["stay", "stay_with", "stay_address", "purpose", "checked_bags", "bag_kg", "rental_car"],
       properties: {
-        stay: { type: ["string", "null"], description: "hotel or place name only, without the city (\"Hotel Bonaventure\", not \"Hotel Bonaventure in Montreal\")" },
+        stay: { type: ["string", "null"], description: "hotel or place proper name only, without the city (\"Hotel Bonaventure\", not \"Hotel Bonaventure in Montreal\"); null for a private home (\"a friend's place\", \"my sister's house\"): use stay_with" },
+        stay_with: { type: ["string", "null"], enum: ["friends", "family", "rental", null], description: "when they stay in a private home instead of a named place: friends, family, or a rental; null otherwise" },
         stay_address: { type: ["string", "null"], description: "its street address with number, as they gave it or as they confirmed it after you looked it up; null if they gave none (a city alone is not an address)" },
         purpose: { type: ["string", "null"], description: "why they travel, only if they said it: tourism, family, friends, business, study, or event (a graduation, a wedding)" },
         checked_bags: { type: ["integer", "null"], description: "how many bags they check; 0 = carry-on only" },
@@ -258,7 +266,7 @@ const TOOLS = [
   {
     type: "function",
     name: "what_i_know",
-    description: "Everything remembered about this traveler, with where each fact came from. Use when they ask what you know about them.",
+    description: "What Escala keeps about this traveler: this trip's flights and details, and what memory holds with where each fact came from, plus how it is kept. Use when they ask what you know about them or where it is stored; list it plainly, in short lines.",
     parameters: { type: "object", additionalProperties: false, required: [], properties: {} },
     strict: true,
   },
@@ -320,7 +328,8 @@ const TOOLS = [
     name: "search_travel_info",
     description:
       "Look up on the web anything practical for this trip that is not a flight or a passenger right: getting from the airport, between terminals or around a city " +
-      "(transit, trains, buses, taxi or ride-hailing and when each makes sense), where to stay or eat, events, tours and visits, opening hours, and safety advisories. " +
+      "(transit, trains, buses, taxi or ride-hailing and when each makes sense), where to stay or eat, events, tours and visits, opening hours, and safety advisories; " +
+      "also entry or transit documents for a country documents_for_trip has not checked (official government pages only). " +
       "Returns findings with sources and the date checked; 'unconfirmed' means no source backed them.",
     parameters: {
       type: "object",
@@ -537,7 +546,14 @@ export function createEscalaAgent(
     if (m.kind === "text" && m.spokenBy === "other") {
       askedAt.set(p.id, at);
       // No tools here: interpreting only translates and suggests an answer from what Escala already knows of the trip.
-      const draft = await answer(interpretRequest(m.text), p, trip, { amounts: [], percents: [], durations: [] }, recentTurns(p, at), { noTools: true });
+      // What the other person said is theirs to say: the interpretation may repeat its figures ("$100 for the extra weight").
+      const said = extractClaims(m.text);
+      const heardFigures: Allowed = {
+        amounts: said.filter((c) => c.kind === "amount" && c.currency).map((c) => ({ currency: c.currency!, value: c.value! })),
+        percents: said.filter((c) => c.kind === "percent").map((c) => c.value!),
+        durations: said.filter((c) => c.kind === "duration").map((c) => c.value!),
+      };
+      const draft = await answer(interpretRequest(m.text), p, trip, heardFigures, recentTurns(p, at), { noTools: true });
       return [{ kind: "text", text: draft.trim() || SAY_AGAIN[p.lang] }];
     }
 
@@ -561,7 +577,7 @@ export function createEscalaAgent(
     const inScope = parts.filter((x) => x.in_scope);
     const outScope = parts.filter((x) => !x.in_scope);
     const replies: OutboundMessage[] = [];
-    if (outScope.length) replies.push({ kind: "text", text: DECLINE[p.lang](outScope.map((x) => x.reason).join("; ")) });
+    if (outScope.length) replies.push({ kind: "text", text: DECLINE[p.lang](inScope.length > 0) });
     if (!inScope.length) return replies;
 
     // Durations the traveler just wrote ("20 days ago", "3.5 hours late") are facts of the trip and may be repeated.
@@ -793,6 +809,21 @@ export function createEscalaAgent(
       // Boarding minutes the airline publishes, or the typical range when it publishes none.
       const br = ruleFor(snap);
       for (const n of br ? [br.startsMin, br.startsLatestMin, br.gateByMin, br.closesMin] : [TYPICAL_BOARDING.fromMin, TYPICAL_BOARDING.toMin]) if (n) allowed.durations.push(n);
+      // The connection after this flight with the latest times: the number the traveler most needs, derived from the data.
+      let connection: { next_flight: string; minutes_between_landing_and_next_departure: number; computed_from: string } | null = null;
+      for (const j of trip ? journeys(trip) : []) {
+        const i = j.findIndex((l) => norm(l.flight) === norm(snap.ident));
+        const next = i >= 0 ? j[i + 1] : undefined;
+        if (!next) continue;
+        const nextSnap = deps.feed.findByIdent(next.flight);
+        const lands = Date.parse(snap.arrival.actual ?? snap.arrival.estimated ?? snap.arrival.scheduled ?? "");
+        const leaves = nextSnap ? Date.parse(nextSnap.departure.estimated ?? nextSnap.departure.scheduled ?? "") : legInstant(next.date, next.dep_local, next.from);
+        if (Number.isFinite(lands) && Number.isFinite(leaves)) {
+          const minutes = Math.round((leaves - lands) / 60000);
+          allowed.durations.push(minutes, Math.round((minutes / 60) * 10) / 10);
+          connection = { next_flight: next.flight, minutes_between_landing_and_next_departure: minutes, computed_from: "this flight's latest arrival time and the next flight's latest departure time" };
+        }
+      }
       const dz = snap.origin.timezone ?? "UTC";
       const az = snap.destination.timezone ?? "UTC";
       return {
@@ -817,6 +848,7 @@ export function createEscalaAgent(
             }
           : null,
         airline_announced_delay: (lateMin ?? 0) > 0 || snap.departure.estimated !== snap.departure.scheduled,
+        connection,
       };
     }
     if (name === "set_passport") {
@@ -841,7 +873,8 @@ export function createEscalaAgent(
     }
     if (name === "set_trip_details") {
       const d = { ...(p.details ?? {}) };
-      const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? scrub(v.trim()).slice(0, max) : undefined);
+      // Models sometimes write null as text; "null" must never reach a card.
+      const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() && !/^(null|none|undefined|n\/a)$/i.test(v.trim()) ? scrub(v.trim()).slice(0, max) : undefined);
       // "Hotel Bonaventure en Montreal" would go to the officer's card as is: keep the place's name only.
       const dest = trip?.legs.at(-1)?.to;
       const town = dest ? [...new Set((["en", "es", "fr"] as const).map((l) => cityName(dest, l).split(" ")[0]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))].join("|") : "";
@@ -849,8 +882,15 @@ export function createEscalaAgent(
       const stay = (town && named ? named.replace(new RegExp(`\\s*,?\\s+(in|en|à|a)\\s+(${town})\\b.*$`, "i"), "") : named) || undefined;
       const given = text(args.stay_address, 160);
       const address = given && /\d/.test(given) ? given : undefined; // a city alone is not an address
-      if (stay && stay !== d.stay) delete d.stayAddress; // another place: the old address no longer applies
-      if (stay) d.stay = stay;
+      const withWho = ["friends", "family", "rental"].includes(String(args.stay_with)) ? (String(args.stay_with) as "friends" | "family" | "rental") : undefined;
+      if ((stay && stay !== d.stay) || (withWho && withWho !== d.stayWith)) delete d.stayAddress; // another place: the old address no longer applies
+      if (stay) {
+        d.stay = stay;
+        delete d.stayWith;
+      } else if (withWho) {
+        d.stayWith = withWho;
+        delete d.stay;
+      }
       if (address) d.stayAddress = address;
       if (Number.isInteger(args.checked_bags) && args.checked_bags >= 0 && args.checked_bags <= 9) d.checkedBags = args.checked_bags;
       if (typeof args.bag_kg === "number" && args.bag_kg > 0 && args.bag_kg < 100) {
@@ -886,7 +926,7 @@ export function createEscalaAgent(
       const stops = immigrationStops(trip);
       if (!trip || !stops.length) return { none: "this route meets no immigration officer (or no itinerary yet)" };
       const d = p.details ?? {};
-      const facts = { stay: d.stay, stayAddress: d.stayAddress, purpose: d.purpose as Purpose | undefined };
+      const facts = { stay: d.stay, stayWith: d.stayWith, stayAddress: d.stayAddress, purpose: d.purpose as Purpose | undefined };
       return {
         stops: stops.map((s) => immigrationCard(trip, s, facts)),
         note: "give each card as written, starting with \"📋\", and say to screenshot it before landing; at the officer's booth they read or show it, never record or call. If something is missing, ask for it in one line; never add a fact the card does not have",
@@ -932,7 +972,19 @@ export function createEscalaAgent(
         if (c.kind === "percent") allowed.percents.push(c.value);
         if (c.kind === "duration") allowed.durations.push(c.value);
       }
-      return { passport: p.passport, countries: found, note: "information from official pages, not legal advice" };
+      // Outside the countries checked by hand there is no rule to give: look it up on the government's own page, never guess.
+      const unchecked = [
+        ...found.filter((f) => !f.covered && !f.own_country).map((f) => f.country),
+        ...(trip?.legs ?? []).flatMap((l) => [l.from, l.to]).filter((a) => !AIRPORTS[a]),
+      ];
+      return {
+        passport: p.passport,
+        countries: found,
+        note: "information from official pages, not legal advice",
+        ...(unchecked.length
+          ? { not_checked_here: [...new Set(unchecked)], next: "for these there is no verified rule in your list: call search_travel_info for what a passport of this country needs to enter or connect there, from that government's official pages only, and give it with its source and date as found by a search, not as checked. Never say the check 'came back empty'." }
+          : {}),
+      };
     }
     if (name === "remember") {
       if (!deps.memory) return { error: "memory is not available" };
@@ -952,12 +1004,30 @@ export function createEscalaAgent(
       }
     }
     if (name === "what_i_know") {
-      if (!deps.memory) return { facts: [] };
-      const facts = deps.memory.recall(p.id);
+      // What this trip keeps (flights, passport, details) and what memory holds: "just this trip" still keeps a trip.
+      const d = p.details ?? {};
+      const thisTrip = {
+        flights: trip ? trip.legs.map((l) => legLine(l, p.lang)) : [],
+        passport: p.passport ?? null,
+        stay: d.stay ?? (d.stayWith ? `private home (${d.stayWith})` : null),
+        stay_address: d.stayAddress ?? null,
+        purpose: d.purpose ?? null,
+        checked_bags: d.checkedBags ?? null,
+        rental_car: d.rentalCar === undefined ? null : d.rentalCar === null ? "no" : d.rentalCar || "yes",
+        travel_style: p.style ?? null,
+        boarding_passes: Object.keys(p.boardingPasses ?? {}),
+      };
+      const facts = deps.memory ? deps.memory.recall(p.id) : [];
       for (const f of facts) numbersInText(f.source.quote ?? "").forEach((n) => allowed.durations.push(n));
+      if (typeof d.checkedBags === "number") allowed.durations.push(d.checkedBags);
       return {
-        sharing: deps.memory.settings(p.id).share,
-        facts: facts.map((f) => ({ id: f.id, scope: f.scope, statement: f.statement, from: `${f.source.kind}, ${f.source.at.slice(0, 10)}`, quote: f.source.quote ?? null })),
+        sharing: p.share,
+        how_it_is_kept:
+          p.share === "profile"
+            ? "encrypted on Escala's server; what was learned stays for next trips until they ask to forget it; they can see or delete anything anytime"
+            : "encrypted on Escala's server; deleted when the trip and any claim deadlines are over; they can see or delete it anytime",
+        this_trip: thisTrip,
+        remembered: facts.map((f) => ({ id: f.id, scope: f.scope, statement: f.statement, from: `${f.source.kind}, ${f.source.at.slice(0, 10)}`, quote: f.source.quote ?? null })),
       };
     }
     if (name === "forget") {
@@ -1103,7 +1173,8 @@ function tripDetailsText(p: Person): string {
   const d = p.details ?? {};
   const bags = d.checkedBags === undefined ? "unknown" : d.checkedBags === 0 ? "carry-on only" : `${d.checkedBags} checked${d.bagKg ? `, ${d.bagKg} kg` : ""}`;
   const car = d.rentalCar === undefined ? "unknown" : d.rentalCar === null ? "no rental car" : d.rentalCar ? `rents with ${JSON.stringify(d.rentalCar)}` : "rents a car (company unknown)";
-  const stay = d.stay ? `${JSON.stringify(d.stay)}${d.stayAddress ? `, address ${JSON.stringify(d.stayAddress)}` : " (address unknown)"}` : "unknown";
+  const place = d.stay ? JSON.stringify(d.stay) : d.stayWith ? `a private home (${d.stayWith})` : "";
+  const stay = place ? `${place}${d.stayAddress ? `, address ${JSON.stringify(d.stayAddress)}` : " (address unknown)"}` : "unknown";
   return `stay ${stay}; purpose ${d.purpose ?? "unknown"}; bags ${bags}; ${car}`;
 }
 

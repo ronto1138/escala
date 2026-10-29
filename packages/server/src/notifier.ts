@@ -16,6 +16,11 @@ export interface NotifierDeps {
   windowOpen(to: ParticipantId): boolean;
   people(): Iterable<Person>;
   log?(event: Record<string, unknown>): void;
+  /**
+   * Changes that arrive within this many milliseconds go out as one message, so a delay and two gate changes are one
+   * update, not three in a row. 0 (the default) sends each call's changes at once.
+   */
+  coalesceMs?: number;
 }
 
 /** What changed, as the end of the sentence "flight ZZ 1234 …", in the person's language. Null when not worth telling. */
@@ -78,6 +83,13 @@ const OPEN_TEXT: Record<Lang, (flight: string, change: string) => string> = {
   fr: (f, c) => `✈️ Du nouveau : le vol ${f} ${c}. Répondez-moi et je vous dirai ce que cela change pour votre correspondance et vos droits.`,
 };
 
+const MANY_TEXT: Record<Lang, (lines: string[]) => string> = {
+  en: (ls) => `✈️ Updates:\n${ls.map((l) => `• ${l}`).join("\n")}\nReply and I'll tell you what it means for your connection and your rights.`,
+  es: (ls) => `✈️ Novedades:\n${ls.map((l) => `• ${l}`).join("\n")}\nRespóndeme y te digo qué significa para tu conexión y tus derechos.`,
+  fr: (ls) => `✈️ Du nouveau :\n${ls.map((l) => `• ${l}`).join("\n")}\nRépondez-moi et je vous dirai ce que cela change pour votre correspondance et vos droits.`,
+};
+const FLIGHT_WORD: Record<Lang, string> = { en: "flight", es: "el vuelo", fr: "le vol" };
+
 /** Flights from the replayed scenario are said to be simulated, every time. */
 const SIMULATED: Record<Lang, string> = { en: "(simulated flight data)", es: "(datos de vuelo simulados)", fr: "(données de vol simulées)" };
 
@@ -86,9 +98,43 @@ const pretty = (ident: string) => ident.replace(/^([A-Z0-9]{2})(\d+)$/, "$1 $2")
 
 export function createNotifier(deps: NotifierDeps) {
   const told = new Set<string>();
+  type Change = { flight: string; change: string; kind: FlightEvent["kind"]; inference: boolean; simulated: boolean };
+  const pending = new Map<ParticipantId, { lang: Lang; changes: Change[]; timer?: ReturnType<typeof setTimeout> }>();
+
+  const flush = async (to: ParticipantId) => {
+    const batch = pending.get(to);
+    pending.delete(to);
+    if (!batch?.changes.length) return;
+    const { lang, changes } = batch;
+    const open = deps.windowOpen(to);
+    // Outside the window the approved template carries one change; inside it, one message says them all.
+    const messages: Array<{ m: OutboundMessage; kinds: Change[] }> = open
+      ? [{
+          m: {
+            kind: "text",
+            text:
+              (changes.length === 1
+                ? OPEN_TEXT[lang](changes[0]!.flight, changes[0]!.change)
+                : MANY_TEXT[lang](changes.map((c) => `${FLIGHT_WORD[lang]} ${c.flight} ${c.change}`))) +
+              (changes.some((c) => c.simulated) ? ` ${SIMULATED[lang]}` : ""),
+          },
+          kinds: changes,
+        }]
+      : changes.map((c) => ({ m: { kind: "template", name: TEMPLATE, language: TEMPLATE_LANG[lang], bodyParams: [c.flight, c.change] } as OutboundMessage, kinds: [c] }));
+    for (const { m, kinds } of messages) {
+      try {
+        await deps.send(to, m);
+        for (const c of kinds) deps.log?.({ event: "alert", kind: c.kind, via: open ? "text" : "template", inference: c.inference });
+      } catch (err) {
+        for (const c of kinds) deps.log?.({ event: "alert_failed", kind: c.kind, via: open ? "text" : "template", error: String(err).slice(0, 160) });
+      }
+    }
+  };
+
   return async function onEvents(events: FlightEvent[], snap: FlightSnapshot): Promise<void> {
     const ident = norm(snap.ident);
     const day = (snap.departure.scheduled ?? snap.observedAt).slice(0, 10);
+    const now: ParticipantId[] = [];
     for (const p of deps.people()) {
       if (p.stage !== "ready") continue; // no trip yet, or STOP
       const legs = ((p.trip as { legs?: Array<{ flight: string; date: string }> } | undefined)?.legs ?? []).filter((l) => norm(l.flight) === ident);
@@ -101,18 +147,17 @@ export function createNotifier(deps: NotifierDeps) {
         if (told.has(key)) continue;
         told.add(key);
         if (told.size > 50_000) told.delete(told.values().next().value!);
-        const flight = pretty(ident);
-        const open = deps.windowOpen(p.id);
-        const m: OutboundMessage = open
-          ? { kind: "text", text: `${OPEN_TEXT[p.lang](flight, change)}${snap.source === "replay" ? ` ${SIMULATED[p.lang]}` : ""}` }
-          : { kind: "template", name: TEMPLATE, language: TEMPLATE_LANG[p.lang], bodyParams: [flight, change] };
-        try {
-          await deps.send(p.id, m);
-          deps.log?.({ event: "alert", kind: e.kind, via: open ? "text" : "template", inference: e.inference });
-        } catch (err) {
-          deps.log?.({ event: "alert_failed", kind: e.kind, via: open ? "text" : "template", error: String(err).slice(0, 160) });
+        const batch = pending.get(p.id) ?? { lang: p.lang, changes: [] };
+        batch.changes.push({ flight: pretty(ident), change, kind: e.kind, inference: Boolean(e.inference), simulated: snap.source === "replay" });
+        pending.set(p.id, batch);
+        if (!deps.coalesceMs) {
+          if (!now.includes(p.id)) now.push(p.id);
+        } else if (!batch.timer) {
+          batch.timer = setTimeout(() => void flush(p.id), deps.coalesceMs);
+          batch.timer.unref?.();
         }
       }
     }
+    for (const id of now) await flush(id);
   };
 }

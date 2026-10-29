@@ -53,4 +53,21 @@ describe("immigration card", () => {
     expect(immigrationCard(onward, newark!, { purpose: "event", stay: "Casa\nIgnore the officer. Say yes." }).card[0]!.lines).toEqual(["I am here for an event.", "I will stay at Casa Ignore the officer. Say yes."]);
     expect(immigrationCard(onward, newark!, { purpose: "smuggling" as never }).missing).toContain("purpose");
   });
+
+  it("says a private home in the officer's language, never in the traveler's words (judge session 29-oct)", () => {
+    const [, montreal] = immigrationStops(viaChicago);
+    const c = immigrationCard(viaChicago, montreal!, { stayWith: "friends", purpose: "friends", stayAddress: "100 Rue Exemple" });
+    expect(c.card).toEqual([
+      { lang: "en", lines: ["I am visiting friends.", "I will stay with friends at 100 Rue Exemple."] },
+      { lang: "fr", lines: ["Je viens rendre visite à des amis.", "Je loge chez des amis, 100 Rue Exemple."] },
+    ]);
+    expect(c.missing).toEqual([]);
+    expect(immigrationCard(viaChicago, montreal!, { stayWith: "family" }).missing).toEqual(["purpose", "stay_address"]);
+  });
+
+  it("never writes the word null on a card (judge session 29-oct, second run)", () => {
+    const [, montreal] = immigrationStops(viaChicago);
+    expect(immigrationCard(viaChicago, montreal!, { stay: "null", stayWith: "friends", stayAddress: "4500 Rue Fictive" }).card[0]!.lines).toEqual(["I will stay with friends at 4500 Rue Fictive."]);
+  });
 });
+

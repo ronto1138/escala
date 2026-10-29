@@ -34,6 +34,7 @@ export function immigrationStops(trip: Trip | undefined): ImmigrationStop[] {
 
 export interface CardFacts {
   stay?: string | undefined;
+  stayWith?: "friends" | "family" | "rental" | undefined;
   stayAddress?: string | undefined;
   purpose?: Purpose | undefined;
 }
@@ -41,6 +42,12 @@ export interface CardFacts {
 const pretty = (ident: string) => ident.replace(/^([A-Z0-9]{2})(\d+)$/, "$1 $2");
 const day = (date: string, lang: Lang) =>
   new Intl.DateTimeFormat({ en: "en-US", es: "es-MX", fr: "fr-CA" }[lang], { month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
+
+const STAY_WITH: Record<"friends" | "family" | "rental", Record<Lang, (at?: string) => string>> = {
+  friends: { en: (a) => `I will stay with friends${a ? ` at ${a}` : ""}.`, es: (a) => `Me voy a quedar con unos amigos${a ? `, en ${a}` : ""}.`, fr: (a) => `Je loge chez des amis${a ? `, ${a}` : ""}.` },
+  family: { en: (a) => `I will stay with family${a ? ` at ${a}` : ""}.`, es: (a) => `Me voy a quedar con mi familia${a ? `, en ${a}` : ""}.`, fr: (a) => `Je loge dans ma famille${a ? `, ${a}` : ""}.` },
+  rental: { en: (a) => `I will stay in a rental${a ? ` at ${a}` : ""}.`, es: (a) => `Me voy a quedar en un alojamiento rentado${a ? `, en ${a}` : ""}.`, fr: (a) => `Je loge dans une location${a ? `, ${a}` : ""}.` },
+};
 
 const PURPOSE_LINE: Record<Purpose, Record<Lang, string>> = {
   tourism: { en: "I am here as a tourist.", es: "Vengo de turista.", fr: "Je viens en touriste." },
@@ -58,11 +65,16 @@ const PURPOSE_LINE: Record<Purpose, Record<Lang, string>> = {
 export function immigrationCard(trip: Trip, stop: ImmigrationStop, given: CardFacts) {
   const legs = trip.legs;
   // One line each, short: what the traveler typed must not add sentences to a card shown to an officer.
-  const flat = (v: string | undefined, max: number) => v?.replace(/\s+/g, " ").trim().slice(0, max) || undefined;
+  const flat = (v: string | undefined, max: number) => {
+    const s = v?.replace(/\s+/g, " ").trim().slice(0, max);
+    return s && !/^(null|none|undefined|n\/a)$/i.test(s) ? s : undefined;
+  };
   const facts = {
     stay: flat(given.stay, 80),
     stayAddress: flat(given.stayAddress, 160),
     purpose: given.purpose && (PURPOSES as readonly string[]).includes(given.purpose) ? given.purpose : undefined,
+    // A named place goes as written; a private home is said in the officer's language, never in the traveler's words.
+    stayWith: flat(given.stay, 80) ? undefined : given.stayWith && STAY_WITH[given.stayWith] ? given.stayWith : undefined,
   };
   const langs = CARD_LANGS[stop.country] ?? ["en"];
   const missing: Array<"purpose" | "stay" | "stay_address"> = [];
@@ -89,6 +101,9 @@ export function immigrationCard(trip: Trip, stop: ImmigrationStop, given: CardFa
     if (facts.stay) {
       const where = (facts.stayAddress ? `${facts.stay}, ${facts.stayAddress}` : facts.stay).replace(/[.\s]+$/, "");
       out.push({ en: `I will stay at ${where}.`, es: `Me voy a quedar en ${where}.`, fr: `Je loge à ${where}.` }[lang]);
+    } else if (facts.stayWith) {
+      const at = facts.stayAddress?.replace(/[.\s]+$/, "");
+      out.push(STAY_WITH[facts.stayWith][lang](at));
     }
     const arrived = legs.findIndex((l) => l.to === stop.airport);
     // Only a flight home is "back"; a flight on to another country is not.
@@ -105,7 +120,7 @@ export function immigrationCard(trip: Trip, stop: ImmigrationStop, given: CardFa
   };
   if (stop.role === "entry") {
     if (!facts.purpose) missing.push("purpose");
-    if (!facts.stay) missing.push("stay");
+    if (!facts.stay && !facts.stayWith) missing.push("stay");
     else if (!facts.stayAddress) missing.push("stay_address");
   }
   return {

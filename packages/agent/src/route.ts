@@ -19,7 +19,7 @@ const SCHEMA = {
         "confirm = says the itinerary Escala summarized is right; fix = says it is wrong or gives a correction; " +
         "itinerary = sends flights, a booking or travel plans to add; stop = wants Escala to stop writing; " +
         "delete_all = wants Escala to delete everything it keeps about them (not one fact); menu = asks for the options; " +
-        "privacy = asks how their data is handled; other = anything else (questions about the trip, remembering or forgetting one thing, chat)",
+        "privacy = asks how their data is handled in general; asking what Escala knows or keeps about them (even together with where it is stored) is other, not privacy; other = anything else (questions about the trip, remembering or forgetting one thing, chat)",
     },
     share: { type: ["string", "null"], enum: ["trip", "profile", null], description: "for share: trip = only this trip; profile = also learn for next time" },
     correction: { type: ["string", "null"], description: "for fix: the correction in the traveler's words, if they gave one" },

@@ -71,6 +71,8 @@ export interface TripDetails {
   stay?: string;
   /** Its address, as they gave it (for immigration forms and directions). */
   stayAddress?: string;
+  /** A private home instead of a named place: with friends, with family, or a rental. The card says it in the officer's language. */
+  stayWith?: "friends" | "family" | "rental";
   /** Checked bags: 0 means carry-on only. */
   checkedBags?: number;
   /** Weight of the checked bag(s) in kg, as they said it. */
