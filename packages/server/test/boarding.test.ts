@@ -126,3 +126,40 @@ describe("immigration card before the flight", () => {
   });
 });
 
+describe("reminder the day before", () => {
+  // A trip Escala cannot follow (no feed data): the reminder comes from the itinerary's own times.
+  const trip = { bookingRef: null, legs: [{ flight: "ZZ890", date: "2026-11-05", from: "CDG", to: "MEX", dep_local: "10:40", arr_local: "15:05" }] };
+  const setup = (nowIso: string, open: boolean, lang = "en") => {
+    const person = { id: "r", lang, stage: "ready", trip } as unknown as Person;
+    const sent: OutboundMessage[] = [];
+    const tick = createBoardingReminders({
+      feed: { findByIdent: () => undefined, now: () => Date.parse(nowIso) },
+      people: () => [person], send: async (_to, m) => void sent.push(m), windowOpen: () => open,
+      cityOf: (c, l) => (({ CDG: { en: "Paris CDG", es: "París CDG" }, MEX: { en: "Mexico City", es: "Ciudad de México" } } as any)[c]?.[l]),
+    });
+    return { sent, tick };
+  };
+
+  it("invites anything they need, once, from 9:00 local the day before", async () => {
+    const early = setup("2026-11-04T07:30:00Z", true); // 8:30 in Paris
+    await early.tick();
+    expect(early.sent).toHaveLength(0);
+    const { sent, tick } = setup("2026-11-04T16:00:00Z", true); // 17:00 in Paris
+    await tick();
+    await tick();
+    expect(sent).toEqual([{ kind: "text", text: "✈️ A reminder: your flight ZZ 890 to Mexico City leaves tomorrow, Thursday, November 5, at 10:40 from Paris CDG (local time). Anything you need before you go?" }]);
+  });
+
+  it("uses the approved template when the 24-hour window is closed", async () => {
+    const { sent, tick } = setup("2026-11-04T16:00:00Z", false, "es");
+    await tick();
+    expect(sent).toEqual([{ kind: "template", name: "escala_flight_update", language: "es_MX", bodyParams: ["ZZ 890", "a Ciudad de México sale mañana, jueves, 5 de noviembre, a las 10:40 de París CDG (hora local)"] }]);
+  });
+
+  it("says nothing on the day of the flight", async () => {
+    const { sent, tick } = setup("2026-11-05T06:00:00Z", true); // 7:00 the same day
+    await tick();
+    expect(sent.filter((m) => m.kind === "text" && m.text.includes("tomorrow"))).toHaveLength(0);
+  });
+});
+

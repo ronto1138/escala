@@ -1,6 +1,6 @@
 import type { OutboundMessage, ParticipantId } from "@escala/channel";
 import type { Lang, Person } from "@escala/conversation";
-import { immigrationCard, immigrationStops, immigrationText, legInstant, type Purpose, type Trip } from "@escala/agent";
+import { AIRPORTS, immigrationCard, immigrationStops, immigrationText, journeys, legInstant, type Purpose, type Trip } from "@escala/agent";
 import { international, ruleFor, remindAt, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
 import { TEMPLATE, TEMPLATE_LANG } from "./notifier.ts";
 
@@ -19,6 +19,27 @@ export interface BoardingDeps {
 }
 
 const norm = (s: string) => s.replace(/\s+/g, "").toUpperCase();
+
+type DayBefore = { flight: string; to: string; from: string; date: string; time: string; simulated: boolean };
+const SIM: Record<Lang, string> = { en: " (simulated flight data)", es: " (datos de vuelo simulados)", fr: " (données de vol simulées)" };
+const dayName = (date: string, lang: Lang) =>
+  new Intl.DateTimeFormat({ en: "en-US", es: "es-MX", fr: "fr-CA" }[lang], { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
+/** Inside the window: a reminder that invites anything they need before leaving. */
+function dayBeforeText(r: DayBefore, lang: Lang): string {
+  return {
+    en: `✈️ A reminder: your flight ${r.flight} to ${r.to} leaves tomorrow, ${r.date}, at ${r.time} from ${r.from} (local time).${r.simulated ? SIM.en : ""} Anything you need before you go?`,
+    es: `✈️ Te recuerdo que tu vuelo ${r.flight} a ${r.to} sale mañana, ${r.date}, a las ${r.time} de ${r.from} (hora local).${r.simulated ? SIM.es : ""} ¿Necesitas algo antes de irte?`,
+    fr: `✈️ Petit rappel : votre vol ${r.flight} pour ${r.to} part demain, ${r.date}, à ${r.time} de ${r.from} (heure locale).${r.simulated ? SIM.fr : ""} Besoin de quelque chose avant de partir ?`,
+  }[lang];
+}
+/** Outside the window: the end of the approved template's sentence "flight {{1}} {{2}}". */
+function dayBeforeChange(r: DayBefore, lang: Lang): string {
+  return {
+    en: `to ${r.to} leaves tomorrow, ${r.date}, at ${r.time} from ${r.from} (local time)`,
+    es: `a ${r.to} sale mañana, ${r.date}, a las ${r.time} de ${r.from} (hora local)`,
+    fr: `pour ${r.to} part demain, ${r.date}, à ${r.time} de ${r.from} (heure locale)`,
+  }[lang];
+}
 const pretty = (ident: string) => ident.replace(/^([A-Z0-9]{2})(\d+)$/, "$1 $2");
 
 function clock(ms: number, tz: string | null): string {
@@ -149,6 +170,32 @@ export function createBoardingReminders(deps: BoardingDeps) {
     const now = deps.feed.now?.() ?? Date.now();
     for (const p of deps.people()) {
       if (p.stage !== "ready") continue;
+
+      // The day before each journey, from 9:00 local at the airport it leaves from. From the itinerary's own times, so
+      // it also reaches flights Escala cannot follow; with the approved template when the 24-hour window is closed.
+      const trip = p.trip as Trip | undefined;
+      for (const j of trip ? journeys(trip) : []) {
+        const l = j[0]!;
+        const tz = AIRPORTS[l.from]?.tz;
+        if (!tz) continue;
+        const snap = deps.feed.findByIdent(l.flight);
+        const sameDay = snap?.departure.scheduled && new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(snap.departure.scheduled)) === l.date;
+        const leaves = sameDay ? Date.parse(snap!.departure.estimated ?? snap!.departure.scheduled!) : legInstant(l.date, l.dep_local, l.from);
+        if (!Number.isFinite(leaves) || now >= leaves) continue;
+        const key = `${p.id}|${norm(l.flight)}|${l.date}|daybefore`;
+        if (told.has(key)) continue;
+        const today = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(now));
+        const tomorrow = new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+        const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", hourCycle: "h23" }).format(new Date(now)));
+        if (l.date !== tomorrow || hour < 9 || hour >= 22) continue;
+        const time = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(leaves));
+        const r = { flight: pretty(norm(l.flight)), to: deps.cityOf?.(l.to, p.lang) || l.to, from: deps.cityOf?.(l.from, p.lang) || l.from, date: dayName(l.date, p.lang), time, simulated: Boolean(sameDay && snap?.source === "replay") };
+        const m: OutboundMessage = deps.windowOpen(p.id)
+          ? { kind: "text", text: dayBeforeText(r, p.lang) }
+          : { kind: "template", name: TEMPLATE, language: TEMPLATE_LANG[p.lang], bodyParams: [r.flight, dayBeforeChange(r, p.lang)] };
+        await send(key, p, m, "day_before_reminder", {});
+      }
+
       const legs = ((p.trip as { legs?: Array<{ flight: string }> } | undefined)?.legs ?? []).map((l) => deps.feed.findByIdent(l.flight));
       const open = deps.windowOpen(p.id);
 
@@ -191,7 +238,7 @@ export function createBoardingReminders(deps: BoardingDeps) {
 
       // Before the flight that lands where an officer waits: the immigration card, to screenshot while there is signal.
       // Only inside the 24-hour window: no approved template carries it.
-      const trip = p.trip as Trip | undefined;
+      // (trip was read above, for the day-before reminder)
       for (const stop of open && trip ? immigrationStops(trip) : []) {
         const s = deps.feed.findByIdent(stop.flight);
         if (!s || s.cancelled) continue;
