@@ -447,7 +447,9 @@ export function createEscalaAgent(
   const checking = createChecking();
   const asked = new Map<string, string[]>(); // person -> facts already asked about
   // Messages a tool sends as they are (the claim letter), after the answer, so the traveler can copy them whole.
-  let outbox: OutboundMessage[] = [];
+  // Kept per person: two travelers' turns run at the same time.
+  const outboxes = new Map<string, OutboundMessage[]>();
+  const currentText = new Map<string, string>(); // person -> the message being answered
   const askedAt = new Map<string, number>();
   // The last turns come from the conversation (`person.recent`, kept encrypted and across restarts), so an answer can
   // build on what was said before ("it was the crew"), including Escala's own questions.
@@ -615,7 +617,8 @@ export function createEscalaAgent(
     const allowed: Allowed = { amounts: [], percents: [], durations: extractClaims(m.text).filter((c) => c.kind === "duration").map((c) => c.value) };
     const question = inScope.map((x) => x.text).join(" ");
     askedAt.set(p.id, at);
-    outbox = [];
+    outboxes.delete(p.id);
+    currentText.set(p.id, m.text);
     let draft = await answer(question, p, trip, allowed, recentTurns(p, at));
     if (!draft.trim()) {
       // The model sometimes spends its whole budget reasoning and writes nothing; WhatsApp rejects empty text.
@@ -624,8 +627,8 @@ export function createEscalaAgent(
     }
     // Learning runs after the answer and never delays it; a failure only means nothing is learned this turn.
     if (deps.learner && deps.memory) void learn(question, p, m.id, m.at, trip).catch((err) => trace({ kind: "fallback", reason: `learning failed: ${String(err).slice(0, 120)}` }));
-    replies.push({ kind: "text", text: draft }, ...outbox);
-    outbox = [];
+    replies.push({ kind: "text", text: draft }, ...(outboxes.get(p.id) ?? []));
+    outboxes.delete(p.id);
     return replies;
   }
 
@@ -838,7 +841,7 @@ export function createEscalaAgent(
       const inference = inboundInference(snap, inboundChain((id) => deps.feed.getFlight(id), snap));
       const lateMin = arrivalMinutesLate(snap);
       const inboundMin = inference?.likelyDepartureDelayMinutes ?? 0;
-      for (const n of [lateMin, inboundMin, inference?.minTurnMinutes]) if (n) allowed.durations.push(n, Math.round((n / 60) * 10) / 10);
+      for (const n of [lateMin, inboundMin, inference?.minTurnMinutes]) if (n && n > 0) allowed.durations.push(n, Math.round((n / 60) * 10) / 10);
       // Boarding minutes the airline publishes, or the typical range when it publishes none.
       const br = ruleFor(snap);
       for (const n of br ? [br.startsMin, br.startsLatestMin, br.gateByMin, br.closesMin] : [TYPICAL_BOARDING.fromMin, TYPICAL_BOARDING.toMin]) if (n) allowed.durations.push(n);
@@ -851,10 +854,11 @@ export function createEscalaAgent(
         const nextSnap = deps.feed.findByIdent(next.flight);
         const lands = Date.parse(snap.arrival.actual ?? snap.arrival.estimated ?? snap.arrival.scheduled ?? "");
         const leaves = nextSnap ? Date.parse(nextSnap.departure.estimated ?? nextSnap.departure.scheduled ?? "") : legInstant(next.date, next.dep_local, next.from);
-        if (Number.isFinite(lands) && Number.isFinite(leaves)) {
+        if (Number.isFinite(lands) && Number.isFinite(leaves) && leaves > lands) {
           const minutes = Math.round((leaves - lands) / 60000);
           allowed.durations.push(minutes, Math.round((minutes / 60) * 10) / 10);
-          connection = { next_flight: next.flight, minutes_between_landing_and_next_departure: minutes, computed_from: "this flight's latest arrival time and the next flight's latest departure time" };
+          connection = { next_flight: next.flight, minutes_between_landing_and_next_departure: minutes, computed_from: "this flight's best-known arrival time and the next flight's estimated or scheduled departure" };
+          break;
         }
       }
       const dz = snap.origin.timezone ?? "UTC";
@@ -1052,7 +1056,6 @@ export function createEscalaAgent(
       };
       const facts = deps.memory ? deps.memory.recall(p.id) : [];
       for (const f of facts) numbersInText(f.source.quote ?? "").forEach((n) => allowed.durations.push(n));
-      if (typeof d.checkedBags === "number") allowed.durations.push(d.checkedBags);
       return {
         sharing: p.share,
         how_it_is_kept:
@@ -1073,7 +1076,10 @@ export function createEscalaAgent(
     }
     if (name === "draft_claim") {
       if (!trip) return { error: "no itinerary yet" };
-      const leg = trip.legs.find((l) => norm(l.flight) === norm(String(args.flight))) ?? trip.legs.at(-1)!;
+      // The bag goes to the end of its journey: the letter names that leg, and only a flight of this trip.
+      const journey = journeys(trip).find((j) => j.some((l) => norm(l.flight) === norm(String(args.flight))));
+      if (!journey) return { error: `flight ${String(args.flight)} is not in this trip: ask which flight the bag was checked on` };
+      const leg = journey.at(-1)!;
       const problem = (BAG_PROBLEMS as readonly string[]).includes(String(args.problem)) ? (String(args.problem) as BagProblem) : null;
       if (!problem) return { error: "problem must be bag_delayed, bag_lost or bag_damaged" };
       const given = (v: unknown) => (typeof v === "string" && v.trim() && !/^(null|none|undefined|n\/a)$/i.test(v.trim()) ? v.trim() : undefined);
@@ -1088,8 +1094,11 @@ export function createEscalaAgent(
       for (const e of escalation) numbersIn(byId.get(e.id)!.deadlines ?? {}).forEach((n) => allowed.durations.push(n));
       if (!rules.length) return { error: "no rule applies to this bag on this trip: say so, and what rights_for_trip says instead" };
       const kept = deps.memory ? (["bag", "bag_tag"] as const).flatMap((o) => deps.memory!.recall(p.id, { topic: `evidence.${o}` }).slice(0, 1).map((f) => ({ what: o, at: f.source.at, tagNumber: (f.data?.tagNumber as string | undefined) }))) : [];
+      // Only amounts the traveler wrote in this turn or a recent one: the model's word is not provenance.
+      const theirs = [currentText.get(p.id) ?? "", ...(p.recent ?? []).filter((t) => t.role === "traveler").map((t) => t.text)]
+        .flatMap((t) => extractClaims(t)).filter((c) => c.kind === "amount").map((c) => c.value);
       const expenses = (Array.isArray(args.expenses) ? args.expenses : [])
-        .filter((e: any) => typeof e?.amount === "number" && typeof e?.currency === "string" && typeof e?.what === "string")
+        .filter((e: any) => typeof e?.amount === "number" && typeof e?.currency === "string" && typeof e?.what === "string" && theirs.includes(e.amount))
         .map((e: any) => ({ what: scrub(e.what), amount: e.amount, currency: e.currency.toUpperCase().slice(0, 3) }));
       const lang = (["en", "es", "fr"] as const).includes(args.letter_lang) ? (args.letter_lang as Lang) : "en";
       const today = (currentMessage.at || new Date().toISOString()).slice(0, 10);
@@ -1106,8 +1115,7 @@ export function createEscalaAgent(
           if_the_airline_does_not_answer: escalation,
         };
       }
-      outbox.push({ kind: "text", text: claim.letter });
-      for (const e of expenses) allowed.amounts.push({ currency: e.currency, value: e.amount });
+      outboxes.set(p.id, [...(outboxes.get(p.id) ?? []), { kind: "text", text: claim.letter }]);
       return {
         letter: "it goes right after your text as a separate message: call it 'the letter below'",
         letter_language: lang,

@@ -98,14 +98,18 @@ const pretty = (ident: string) => ident.replace(/^([A-Z0-9]{2})(\d+)$/, "$1 $2")
 
 export function createNotifier(deps: NotifierDeps) {
   const told = new Set<string>();
-  type Change = { flight: string; change: string; kind: FlightEvent["kind"]; inference: boolean; simulated: boolean };
+  type Change = { key: string; flight: string; change: string; kind: FlightEvent["kind"]; inference: boolean; simulated: boolean };
   const pending = new Map<ParticipantId, { lang: Lang; changes: Change[]; timer?: ReturnType<typeof setTimeout> }>();
 
   const flush = async (to: ParticipantId) => {
     const batch = pending.get(to);
     pending.delete(to);
     if (!batch?.changes.length) return;
-    const { lang, changes } = batch;
+    // The person may have said STOP, or changed language, while the batch waited.
+    const person = [...deps.people()].find((x) => x.id === to);
+    if (!person || person.stage !== "ready") return;
+    const lang = person.lang;
+    const { changes } = batch;
     const open = deps.windowOpen(to);
     // Outside the window the approved template carries one change; inside it, one message says them all.
     const messages: Array<{ m: OutboundMessage; kinds: Change[] }> = open
@@ -126,7 +130,10 @@ export function createNotifier(deps: NotifierDeps) {
         await deps.send(to, m);
         for (const c of kinds) deps.log?.({ event: "alert", kind: c.kind, via: open ? "text" : "template", inference: c.inference });
       } catch (err) {
-        for (const c of kinds) deps.log?.({ event: "alert_failed", kind: c.kind, via: open ? "text" : "template", error: String(err).slice(0, 160) });
+        for (const c of kinds) {
+          told.delete(c.key); // not sent: the next snapshot may tell it again
+          deps.log?.({ event: "alert_failed", kind: c.kind, via: open ? "text" : "template", error: String(err).slice(0, 160) });
+        }
       }
     }
   };
@@ -148,7 +155,7 @@ export function createNotifier(deps: NotifierDeps) {
         told.add(key);
         if (told.size > 50_000) told.delete(told.values().next().value!);
         const batch = pending.get(p.id) ?? { lang: p.lang, changes: [] };
-        batch.changes.push({ flight: pretty(ident), change, kind: e.kind, inference: Boolean(e.inference), simulated: snap.source === "replay" });
+        batch.changes.push({ key, flight: pretty(ident), change, kind: e.kind, inference: Boolean(e.inference), simulated: snap.source === "replay" });
         pending.set(p.id, batch);
         if (!deps.coalesceMs) {
           if (!now.includes(p.id)) now.push(p.id);

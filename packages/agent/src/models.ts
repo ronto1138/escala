@@ -76,7 +76,8 @@ export async function extractTrip(
     }
   }
   if (!j || !j.found || !Array.isArray(j.legs) || j.legs.length === 0) return null;
-  return { bookingRef: j.booking_ref ?? null, legs: j.legs };
+  // privacy.ts promises the booking code is never kept: it is read with the itinerary and dropped here.
+  return { bookingRef: null, legs: j.legs };
 }
 
 const SCOPE_SCHEMA = {

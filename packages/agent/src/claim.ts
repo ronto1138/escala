@@ -135,6 +135,10 @@ export const ESCALATION = new Set(["mx-profeco", "us-dot-complaint"]);
 
 /** Rules whose text gives back the bag fee. */
 const FEE_RULES = new Set(["us-260-bag-fee", "ca-appr-23-baggage"]);
+/** Rules that make the airline pay for the damage (expenses, repair, value), up to a limit. */
+const LIABILITY_RULES = new Set(["mc-baggage", "ca-appr-23-baggage", "us-254-baggage", "mx-lac-62-baggage"]);
+/** Currencies an expense may be written in. */
+const CURRENCIES = new Set(["USD", "CAD", "MXN", "EUR", "GBP", "CHF", "JPY", "AUD", "BRL", "COP", "ARS", "CLP", "PEN"]);
 
 /**
  * The written claim for a bag, built only from the trip, the rules that apply, what the traveler said and what Escala
@@ -146,15 +150,24 @@ export function draftClaim(c: ClaimInput): Claim {
   const flight = pretty(c.leg.flight);
   const day = date(c.leg.date, lang);
   const route = `${cityName(c.leg.from, lang)} (${c.leg.from}) → ${cityName(c.leg.to, lang)} (${c.leg.to})`;
-  const flat = (s: string) => s.replace(/\s+/g, " ").trim();
-  const reportRef = c.reportRef && flat(c.reportRef).slice(0, 40);
-  const deliveredOn = c.deliveredOn && /^\d{4}-\d{2}-\d{2}$/.test(c.deliveredOn) ? c.deliveredOn : undefined;
-  const tag = c.evidence.find((e) => e.tagNumber)?.tagNumber;
+  // Everything that comes from the traveler or a model goes in as one short line, without links or markup.
+  const flat = (s: string) => s.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/https?:\/\/\S+|www\.\S+/gi, "").replace(/[*_`#<>|]/g, "").replace(/\s+/g, " ").trim();
+  // A file number or a bag tag is a code, not a sentence: letters and digits, with at least a few digits.
+  const code = (v: string | undefined, digits: number) => {
+    const x = v?.replace(/[\s-]+/g, "").toUpperCase();
+    return x && /^[A-Z0-9]{4,20}$/.test(x) && (x.match(/\d/g)?.length ?? 0) >= digits ? x : undefined;
+  };
+  const reportRef = code(c.reportRef, 3);
+  // A delivery in the future is a mistake, not a date to count from.
+  const deliveredOn = c.deliveredOn && /^\d{4}-\d{2}-\d{2}$/.test(c.deliveredOn) && !(c.today && c.deliveredOn > c.today) ? c.deliveredOn : undefined;
+  const tagRaw = c.evidence.find((e) => e.tagNumber)?.tagNumber;
+  const tag = code(tagRaw, 4);
   const missing: Claim["missing"] = [];
 
   const lines: string[] = [t.subject(flight, day, route), "", t.to, "", t.intro(t.what[c.problem], flight, day, route)];
-  const ids = [t.booking(c.trip.bookingRef ?? t.bookingBlank), tag ? t.tag(tag) : "", reportRef ? t.report(reportRef) : t.reportBlank].filter(Boolean);
-  if (!c.trip.bookingRef) missing.push("booking_ref");
+  // The booking code is never kept (privacy.ts): the traveler writes it in.
+  const ids = [t.booking(t.bookingBlank), tag ? t.tag(tag) : "", reportRef ? t.report(reportRef) : t.reportBlank].filter(Boolean);
+  missing.push("booking_ref");
   if (!reportRef) missing.push("report_ref");
   lines.push(ids.join(" "));
   if (c.problem !== "bag_lost") {
@@ -166,11 +179,12 @@ export function draftClaim(c: ClaimInput): Claim {
   lines.push("", t.under, ...c.rules.map((r) => `• ${r.instrument}, art. ${r.article}`));
 
   const asks: string[] = [];
-  const expenses = c.expenses.filter((e) => e.amount > 0 && e.what.trim()).slice(0, 12);
+  const liable = c.rules.some((r) => LIABILITY_RULES.has(r.id));
+  const expenses = liable ? c.expenses.filter((e) => Number.isFinite(e.amount) && e.amount > 0 && e.amount < 100_000 && CURRENCIES.has(e.currency) && flat(e.what)).slice(0, 12) : [];
   if (expenses.length) asks.push(`${t.expenses}\n${expenses.map((e) => `   – ${flat(e.what).slice(0, 80)}: ${money(e.amount, e.currency, lang)}`).join("\n")}`);
-  else if (c.problem === "bag_delayed") missing.push("receipts");
-  if (c.problem === "bag_damaged") asks.push(t.damage);
-  if (c.problem === "bag_lost") asks.push(t.lostValue);
+  else if (c.problem === "bag_delayed" && liable) missing.push("receipts");
+  if (c.problem === "bag_damaged" && liable) asks.push(t.damage);
+  if (c.problem === "bag_lost" && liable) asks.push(t.lostValue);
   if (c.rules.some((r) => FEE_RULES.has(r.id))) asks.push(t.fee);
   if (asks.length) lines.push("", t.request, ...asks.map((a) => `• ${a}`));
 
@@ -187,7 +201,8 @@ export function draftClaim(c: ClaimInput): Claim {
   const startsOn = c.problem === "bag_lost" ? c.leg.date : deliveredOn;
   const due = shortest && startsOn ? new Date(Date.parse(`${startsOn}T12:00:00Z`) + shortest.days * 86_400_000).toISOString().slice(0, 10) : null;
   const deadline = shortest && due ? { date: due, days: shortest.days, rule: shortest.rule, passed: Boolean(c.today && c.today > due) } : null;
-  if (shortest) lines.push("", t.within(shortest.days, shortest.rule));
+  // "Within the N days" only when the day that starts them is known and they have not run out.
+  if (deadline && !deadline.passed) lines.push("", t.within(deadline.days, deadline.rule));
   lines.push("", t.close, "", t.sign);
   return { letter: lines.join("\n"), deadline, missing };
 }

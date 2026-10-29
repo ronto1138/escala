@@ -62,5 +62,15 @@ describe("flight alerts", () => {
     const text = (sent[0]!.m as { text: string }).text;
     expect(text).toMatch(/^✈️ Updates:\n• flight ZZ 1234 now arrives about 100 min late\n• flight ZZ 567 has its departure gate: E5\nReply/);
   });
+
+  it("drops a batched alert for someone who said STOP while it waited (Muse Code audit e)", async () => {
+    const sent: Array<{ to: string; m: OutboundMessage }> = [];
+    const people = [person("d", { lang: "en" })];
+    const notify = createNotifier({ send: async (to, m) => (sent.push({ to, m }), { id: "x" }), windowOpen: () => true, people: () => people, coalesceMs: 20 });
+    await notify([late], snap);
+    people[0]!.stage = "stopped" as Person["stage"];
+    await new Promise((r) => setTimeout(r, 50));
+    expect(sent).toHaveLength(0);
+  });
 });
 

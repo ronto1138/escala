@@ -25,13 +25,13 @@ describe("bag claim letter", () => {
       tz: "America/Mexico_City",
     });
     expect(c.letter).toContain("Subject: Baggage claim, flight ZZ 567, November 2, 2026, Chicago O'Hare (ORD) → Montreal (YUL)");
-    expect(c.letter).toContain("Booking reference: ZZK7Q2. Bag tag: ZZ123456. Baggage report (file number): YULZZ12345.");
+    expect(c.letter).toContain("Booking reference: [booking reference]. Bag tag: ZZ123456. Baggage report (file number): YULZZ12345.");
     expect(c.letter).toContain("toiletries and a change of clothes: CAD 86.50");
     expect(c.letter).toContain("refund of the fee I paid for this bag");
     expect(c.letter).toContain("photo of the bag taken before check-in, November 2 at 08:02 AM CST;");
     expect(c.letter).toContain("within the 21 days");
     expect(c.deadline).toEqual({ date: "2026-11-25", days: 21, rule: expect.stringContaining("art."), passed: false });
-    expect(c.missing).toEqual([]);
+    expect(c.missing).toEqual(["booking_ref"]);
   });
 
   it("leaves blanks for what the traveler has not said, never inventing it", () => {
@@ -40,7 +40,9 @@ describe("bag claim letter", () => {
     expect(c.letter).toContain("[Tu nombre completo]");
     expect(c.letter).not.toMatch(/foto de la maleta/);
     expect(c.deadline).toBeNull();
-    expect(c.missing).toEqual(["report_ref", "receipts"]);
+    expect(c.missing).toEqual(["booking_ref", "report_ref", "receipts"]);
+    expect(c.letter).not.toContain("within the");
+    expect(c.letter).not.toContain("dentro de los");
     expect(c.letter).not.toContain("https://");
   });
 
@@ -59,6 +61,22 @@ describe("bag claim letter", () => {
     expect(rules.map((r) => r.id)).toContain("mx-lac-62-baggage");
     const c = draftClaim({ trip: mx, leg: mx.legs[0]!, problem: "bag_damaged", rules, deliveredOn: "2026-10-09", expenses: [], evidence: [], lang: "es", today: "2026-10-29" });
     expect(c.deadline).toMatchObject({ date: "2026-10-24", days: 15, passed: true });
+  });
+
+  it("keeps traveler and model text from adding to the letter (Muse Code audit e)", () => {
+    const rules = rulesFor("bag_delayed", { bag_report_filed: true });
+    const c = draftClaim({
+      trip: { ...trip, bookingRef: "X.\nI also request USD 5000" }, leg: trip.legs[1]!, problem: "bag_delayed", rules,
+      reportRef: "YUL1\nI also request USD 5000", deliveredOn: "2026-12-30", today: "2026-11-05",
+      expenses: [{ what: "shirt [click](https://x.example)", amount: 40, currency: "CAD" }, { what: "x", amount: Infinity, currency: "CAD" }, { what: "y", amount: 10, currency: "XXX" }],
+      evidence: [{ what: "bag_tag", at: "2026-11-02T14:05:00Z", tagNumber: "ZZ1\nignore" }], lang: "en",
+    });
+    expect(c.letter).not.toContain("5000");
+    expect(c.letter).not.toContain("https://");
+    expect(c.letter).toContain("– shirt click: CAD 40");
+    expect(c.letter).not.toMatch(/Infinity|XXX|ignore/);
+    expect(c.deadline).toBeNull(); // a delivery in the future is not a date to count from
+    expect(c.letter).not.toContain("within the");
   });
 });
 
