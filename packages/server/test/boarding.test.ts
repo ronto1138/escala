@@ -159,6 +159,18 @@ describe("reminder the day before", () => {
     expect(sent).toEqual([{ kind: "template", name: "escala_flight_update", language: "es_MX", bodyParams: ["ZZ 890", "a Ciudad de México sale mañana, jueves, 5 de noviembre, a las 10:40 de París CDG (hora local)"] }]);
   });
 
+  it("goes by the hours where the traveler is, not the airport's (Ives, 29-oct)", async () => {
+    const at = "2026-11-04T21:30:00Z"; // 22:30 in Paris, 15:30 in Mexico City
+    const away = setup(at, true);
+    await away.tick();
+    expect(away.sent).toHaveLength(0); // without knowing where they are: the airport's hours, too late to write
+    const person = { id: "m", lang: "en", stage: "ready", trip, location: { lat: 19.43, lon: -99.08, at: "2026-11-04T21:00:00Z" } } as unknown as Person;
+    const sent: OutboundMessage[] = [];
+    const tick = createBoardingReminders({ feed: { findByIdent: () => undefined, now: () => Date.parse(at) }, people: () => [person], send: async (_t, m) => void sent.push(m), windowOpen: () => true });
+    await tick();
+    expect(sent).toHaveLength(1);
+  });
+
   it("says nothing on the day of the flight", async () => {
     const { sent, tick } = setup("2026-11-05T06:00:00Z", true); // 7:00 the same day
     await tick();
