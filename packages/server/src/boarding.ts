@@ -158,6 +158,7 @@ export function createBoardingReminders(deps: BoardingDeps) {
     for (const c of cards.filter((k) => k.lines.length)) {
       const audio = await deps.speak!(c.lines.join(" "), c.lang);
       if (!audio) continue;
+      if (p.stage !== "ready" || !deps.windowOpen(p.id)) return; // STOP, or the window closed, while recording
       try {
         // WhatsApp cannot caption a voice note: a line before it says which card it is.
         await deps.send(p.id, { kind: "text", text: voiceLabel(stop, c.lang, p.lang) });

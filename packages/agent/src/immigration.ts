@@ -68,7 +68,8 @@ export function immigrationCard(trip: Trip, stop: ImmigrationStop, given: CardFa
   const legs = trip.legs;
   // One line each, short: what the traveler typed must not add sentences to a card shown to an officer.
   const flat = (v: string | undefined, max: number) => {
-    const s = v?.replace(/\s+/g, " ").trim().slice(0, max);
+    // Links and markup never reach a card shown to an officer.
+    const s = v?.replace(/https?:\/\/\S+|www\.\S+/gi, "").replace(/[*_`#<>|[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, max);
     return s && !/^(null|none|undefined|n\/a)$/i.test(s) ? s : undefined;
   };
   const facts = {

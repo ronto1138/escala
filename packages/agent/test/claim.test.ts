@@ -78,5 +78,13 @@ describe("bag claim letter", () => {
     expect(c.deadline).toBeNull(); // a delivery in the future is not a date to count from
     expect(c.letter).not.toContain("within the");
   });
+
+  it("counts a lost bag from the day the flight arrives, the next day for an overnight flight (Muse Code nightly audit)", () => {
+    const night = { bookingRef: null, legs: [{ flight: "ZX3", date: "2026-11-03", from: "TIJ", to: "MEX", dep_local: "23:30", arr_local: "05:10" }] };
+    const e = entries.find((x) => x.id === "mx-lac-62-baggage")!;
+    const rules = [{ id: e.id, instrument: e.instrument, article: e.article, source: e.source_url, ...(e.deadlines ? { deadlines: e.deadlines } : {}) }];
+    const c = draftClaim({ trip: night, leg: night.legs[0]!, problem: "bag_lost", rules, expenses: [], evidence: [], lang: "en", today: "2026-11-05" });
+    expect(c.deadline).toMatchObject({ days: 15, date: "2026-11-19" }); // arrives 4 Nov + 15 days
+  });
 });
 

@@ -198,7 +198,9 @@ export function draftClaim(c: ClaimInput): Claim {
   const keys = DEADLINE_KEY[c.problem];
   const options = c.rules.flatMap((r) => keys.filter((k) => r.deadlines?.[k]).map((k) => ({ days: r.deadlines![k]!, rule: `${r.instrument}, art. ${r.article}` })));
   const shortest = options.sort((a, b) => a.days - b.days)[0];
-  const startsOn = c.problem === "bag_lost" ? c.leg.date : deliveredOn;
+  // A lost bag counts from the day it should have arrived: the flight's arrival day, the next one for an overnight flight.
+  const arrives = c.leg.arr_local < c.leg.dep_local ? new Date(Date.parse(`${c.leg.date}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10) : c.leg.date;
+  const startsOn = c.problem === "bag_lost" ? arrives : deliveredOn;
   const due = shortest && startsOn ? new Date(Date.parse(`${startsOn}T12:00:00Z`) + shortest.days * 86_400_000).toISOString().slice(0, 10) : null;
   const deadline = shortest && due ? { date: due, days: shortest.days, rule: shortest.rule, passed: Boolean(c.today && c.today > due) } : null;
   // "Within the N days" only when the day that starts them is known and they have not run out.

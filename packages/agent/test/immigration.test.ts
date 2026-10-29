@@ -85,5 +85,11 @@ describe("immigration card", () => {
     ]);
     expect(c.missing).toEqual([]);
   });
+
+  it("keeps links and markup off a card shown to an officer (Muse Code nightly audit, 29-oct)", () => {
+    const [, montreal] = immigrationStops(viaChicago);
+    const c = immigrationCard(viaChicago, montreal!, { purpose: "tourism", stay: "Hotel *Synthetic* https://x.example", stayAddress: "100 Rue Exemple" });
+    expect(c.card[0]!.lines[1]).toBe("I will stay at Hotel Synthetic, 100 Rue Exemple.");
+  });
 });
 

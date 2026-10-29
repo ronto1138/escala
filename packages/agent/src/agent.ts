@@ -480,8 +480,8 @@ export function createEscalaAgent(
     return Number.isFinite(dep) && Number.isFinite(arr) ? { dep, arr } : undefined;
   };
   // A trip on the demo's simulated flights lives on the story's clock (it runs faster than life); any other, on the real one.
-  const storyNow = (trip: Trip | undefined) =>
-    deps.feed.now && trip?.legs.some((l) => flightFor(trip, l.flight)) ? deps.feed.now() : Date.parse(messageAt) || Date.now();
+  const storyNow = (trip: Trip | undefined, p?: Person) =>
+    deps.feed.now && trip?.legs.some((l) => flightFor(trip, l.flight)) ? deps.feed.now() : Date.parse(p ? turn(p).at : "") || Date.now();
 
   async function extractItinerary(m: InboundMessage, p: Person, correction?: string): Promise<ExtractedTrip | null> {
     const current = (p.pending?.trip ?? p.trip) as Trip | undefined;
@@ -490,9 +490,9 @@ export function createEscalaAgent(
     return { lines: trip.legs.map((l) => legLine(l, p.lang)), trip };
   }
 
-  let currentMessage = { id: "", at: "" };
-  let messageId = "";
-  let messageAt = "";
+  // The message being answered, per person: two travelers' turns run at the same time (Muse Code nightly audit, 29-oct).
+  const turns = new Map<string, { id: string; at: string }>();
+  const turn = (p: Person) => turns.get(p.id) ?? { id: "", at: "" };
 
   async function evidence(m: Extract<InboundMessage, { mediaId: string }>, p: Person, trip: Trip): Promise<string> {
     const earlierFacts = deps.memory
@@ -518,7 +518,7 @@ export function createEscalaAgent(
         expiresAt: tripFactExpiry(trip, m.at, longestClaimDays),
       });
     }
-    return evidenceReply({ ...reading, object }, p.lang, m.at, before?.source.at, whereNow(trip, storyNow(trip), p.location, liveTimesFor(trip))?.tz);
+    return evidenceReply({ ...reading, object }, p.lang, m.at, before?.source.at, whereNow(trip, storyNow(trip, p), p.location, liveTimesFor(trip))?.tz);
   }
 
   /** A boarding pass: its boarding time, gate, seat and group are kept for that flight and checked against the feed. */
@@ -573,8 +573,7 @@ export function createEscalaAgent(
     // A photo once the trip is known is evidence: the state of the bag or the rental car (itineraries come before).
     if (m.kind === "image" && p.trip) return [{ kind: "text", text: await evidence(m, p, p.trip as Trip) }];
     if (m.kind !== "text" && m.kind !== "location") return [{ kind: "text", text: NOT_YET_MEDIA[p.lang] }]; // voice notes are transcribed before reaching here
-    messageId = m.id;
-    messageAt = m.at;
+    turns.set(p.id, { id: m.id, at: m.at });
     const trip = p.trip as Trip | undefined;
     const at = Date.parse(m.at) || Date.now();
     if (p.location && !locationIsFresh(p.location, at)) delete p.location;
@@ -725,17 +724,16 @@ export function createEscalaAgent(
         ? ` When the traveler shares a useful habit or preference, call remember with their own words: scope "profile" for habits and preferences that matter on future trips${p.share === "profile" ? "" : " (they have not turned that on, so use \"trip\")"}, scope "trip" for what only matters now.`
         : "") +
       memoryText +
-      (locationIsFresh(p.location, Date.parse(messageAt) || Date.now())
-        ? ` Where the traveler is (they shared it): ${describeLocation(p.location, trip, Date.parse(messageAt) || Date.now())}. Use it for directions and nearby suggestions, say in a few words how you understood where they are, and never repeat the coordinates. Say only what a location can show (the airport, the area, the place name they picked), never a terminal, floor, side or gate it cannot show. If they only shared it, answer what they last asked that needs it; if the new location shows that question is behind them (they already arrived), don't answer it again: acknowledge where they are and ask in one line what they need there.`
+      (locationIsFresh(p.location, Date.parse(turn(p).at) || Date.now())
+        ? ` Where the traveler is (they shared it): ${describeLocation(p.location, trip, Date.parse(turn(p).at) || Date.now())}. Use it for directions and nearby suggestions, say in a few words how you understood where they are, and never repeat the coordinates. Say only what a location can show (the airport, the area, the place name they picked), never a terminal, floor, side or gate it cannot show. If they only shared it, answer what they last asked that needs it; if the new location shows that question is behind them (they already arrived), don't answer it again: acknowledge where they are and ask in one line what they need there.`
         : " If the traveler asks how to get somewhere nearby or for something close to them and you don't know where they are, ask them to share their location in WhatsApp (clip → Location).") +
       ((here) =>
         here
-          ? ` Right now it is ${localClock(storyNow(trip), here.tz)} in ${here.city}, where the traveler most likely is (${here.why}). Give every time as a clock time, local at its airport, and say which city when it could be confused.`
-          : "")(whereNow(trip, storyNow(trip), p.location, liveTimesFor(trip))) +
+          ? ` Right now it is ${localClock(storyNow(trip, p), here.tz)} in ${here.city}, where the traveler most likely is (${here.why}). Give every time as a clock time, local at its airport, and say which city when it could be confused.`
+          : "")(whereNow(trip, storyNow(trip, p), p.location, liveTimesFor(trip))) +
       " When you call search_travel_info, also write one short line telling the traveler you are looking it up, in your own words and about what they asked, different every time; no figures or questions in it.";
 
     const input: any[] = [...earlier.map((t) => ({ role: t.role, content: t.content })), { role: "user", content: question }];
-    currentMessage = { id: messageId, at: messageAt };
     let toldChecking = false;
     let toldDocuments = false;
     for (let round = 0; round < (deps.maxToolRounds ?? 4); round++) {
@@ -815,6 +813,7 @@ export function createEscalaAgent(
   }
 
   async function runTool(name: string, args: any, p: Person, trip: Trip | undefined, allowed: Allowed): Promise<unknown> {
+    const currentMessage = turn(p);
     if (name === "search_travel_info") {
       const query = String(args.query ?? "").slice(0, 300);
       if (RIGHTS_TOPIC.test(query)) return { error: "rights and compensation come only from rights_for_trip" };
@@ -900,7 +899,7 @@ export function createEscalaAgent(
         arrival_minutes_late: lateMin,
         cancelled: snap.cancelled,
         aircraft_type: snap.aircraftType,
-        boarding: boardingFor(snap, dz, storyNow(trip)),
+        boarding: boardingFor(snap, dz, storyNow(trip, p)),
         their_boarding_pass: p.boardingPasses?.[norm(snap.ident)] ?? null,
         inbound_aircraft_inference: inference
           ? {
@@ -1011,6 +1010,7 @@ export function createEscalaAgent(
             for (const k of lines) {
               const audio = await speak(k.lines.join(" "), k.lang).catch(() => null);
               if (!audio) continue;
+              if (p.stage !== "ready") return; // they said STOP while the notes were being recorded
               await later(id, { kind: "text", text: k.label }).catch(() => undefined);
               await later(id, { kind: "voice", audio }).catch(() => undefined);
             }
@@ -1259,9 +1259,7 @@ export function createEscalaAgent(
     },
     async briefDocuments(p: Person) {
       const at = new Date().toISOString();
-      messageId = `documents-${Date.now()}`;
-      messageAt = at;
-      currentMessage = { id: messageId, at };
+      turns.set(p.id, { id: `documents-${Date.now()}`, at });
       const draft = await answer(DOCUMENTS_BRIEF, p, p.trip as Trip | undefined, { amounts: [], percents: [], durations: [] }, recentTurns(p, Date.parse(at)));
       return draft.trim() ? [{ kind: "text" as const, text: draft.trim() }] : [];
     },

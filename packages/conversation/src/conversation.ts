@@ -195,7 +195,9 @@ export class Conversation {
     let p = this.people.get(m.from) ?? this.deps.store?.load(m.from);
     if (p) this.people.set(m.from, p);
     if (p && m.kind === "location" && Math.abs(m.latitude) <= 90 && Math.abs(m.longitude) <= 180) {
-      p.location = { lat: m.latitude, lon: m.longitude, ...(m.name ? { name: m.name.slice(0, 100) } : {}), at: m.at };
+      // The place name comes from the sender's phone and reaches the model's instructions: a short plain label only.
+      const name = m.name?.replace(/[^\p{L}\p{N} ,.'&()-]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+      p.location = { lat: m.latitude, lon: m.longitude, ...(name ? { name } : {}), at: m.at };
     }
     const before = p?.recent?.length ?? 0; // the replies to this message are added after this point
     try {
