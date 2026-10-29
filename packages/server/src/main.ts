@@ -6,7 +6,7 @@ import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AIRPORTS, cityName, createEscalaAgent, createRates, legLine, longestDeadlineDays, readIntent, routeMessage, type TraceStep } from "@escala/agent";
-import type { InboundMessage } from "@escala/channel";
+import type { InboundMessage, OutboundMessage } from "@escala/channel";
 import { Conversation, keywordIntent, type Person } from "@escala/conversation";
 import { loadScenario, ReplayClock, scenarioLegs } from "@escala/feeds";
 import { ConversationStore, MemoryCrypto, MemoryStore } from "@escala/memory";
@@ -91,7 +91,7 @@ log({ event: "speech", on: Boolean(speak) });
 
 // What the agent decided, for the operations report: counts and kinds only, never content.
 const escala = createEscalaAgent({
-  ...(speak ? { speak } : {}),
+  ...(speak ? { speak, later: async (id: string, m: OutboundMessage) => void (await channel.send(id, m)) } : {}),
   client, feed, entries: loadEntries(), media: channel, memory, ...(learner ? { learner } : {}), convertCurrency: createRates(),
   progress: async (id, text) => void (await channel.send(id, { kind: "text", text })),
   trace: (s: TraceStep) => log(traceEvent(s)),

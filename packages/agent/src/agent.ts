@@ -41,6 +41,8 @@ export interface AgentDeps {
   progress?: (personId: string, text: string) => Promise<void>;
   /** Reads a card aloud as a voice note (OGG/Opus); null when it could not. Without it, cards go as text only. */
   speak?: (text: string, lang: Lang) => Promise<Uint8Array | null>;
+  /** Sends a message after the answer, when it is ready (the voice notes); without it the answer waits for them. */
+  later?: (personId: string, m: OutboundMessage) => Promise<void>;
 }
 
 /** What a shared location becomes for the agent: the place is given separately, in the instructions. */
@@ -452,6 +454,7 @@ export function createEscalaAgent(
   // Kept per person: two travelers' turns run at the same time.
   const outboxes = new Map<string, Array<OutboundMessage | Promise<OutboundMessage | null>>>();
   const currentText = new Map<string, string>(); // person -> the message being answered
+  const answered = new Map<string, () => void>(); // person -> called when this turn's answer is handed over
   const askedAt = new Map<string, number>();
   // The last turns come from the conversation (`person.recent`, kept encrypted and across restarts), so an answer can
   // build on what was said before ("it was the crew"), including Escala's own questions.
@@ -633,6 +636,8 @@ export function createEscalaAgent(
     const extra = (await Promise.all(outboxes.get(p.id) ?? [])).filter((x): x is OutboundMessage => x !== null);
     outboxes.delete(p.id);
     replies.push({ kind: "text", text: draft }, ...extra);
+    answered.get(p.id)?.();
+    answered.delete(p.id);
     return replies;
   }
 
@@ -972,10 +977,27 @@ export function createEscalaAgent(
       const voiced = Boolean(deps.speak);
       if (deps.speak) {
         const speak = deps.speak;
-        const notes = cards.flatMap((c) => c.card.filter((k) => k.lines.length)).map((k) =>
-          speak(k.lines.join(" "), k.lang).then((audio) => (audio ? ({ kind: "voice", audio } as OutboundMessage) : null)).catch(() => null),
-        );
-        outboxes.set(p.id, [...(outboxes.get(p.id) ?? []), ...notes]);
+        const lines = cards.flatMap((c) => c.card.filter((k) => k.lines.length));
+        if (deps.later) {
+          // The answer goes out now; each note follows, in order, as soon as it is recorded.
+          const later = deps.later;
+          const id = p.id;
+          const handedOver = new Promise<void>((r) => {
+            answered.set(id, r);
+            setTimeout(r, 60_000).unref?.(); // a turn that never finishes must not hold the notes forever
+          });
+          void (async () => {
+            await handedOver;
+            await new Promise((r) => setTimeout(r, 1500)); // the answer is sent right after this turn returns
+            for (const k of lines) {
+              const audio = await speak(k.lines.join(" "), k.lang).catch(() => null);
+              if (audio) await later(id, { kind: "voice", audio }).catch(() => undefined);
+            }
+          })();
+        } else {
+          const notes = lines.map((k) => speak(k.lines.join(" "), k.lang).then((audio) => (audio ? ({ kind: "voice", audio } as OutboundMessage) : null)).catch(() => null));
+          outboxes.set(p.id, [...(outboxes.get(p.id) ?? []), ...notes]);
+        }
       }
       return {
         stops: cards,
