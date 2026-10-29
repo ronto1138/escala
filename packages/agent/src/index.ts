@@ -2,7 +2,7 @@ export { createEscalaAgent, longestDeadlineDays, tripFactExpiry, type AgentDeps,
 export { evidenceReply, readEvidence, type EvidenceObject, type EvidenceReading } from "./evidence.ts";
 export { dayLabel, forWhatsApp, legLine, timeLabel } from "./format.ts";
 export { readIntent } from "./intent.ts";
-export { immigrationCard, immigrationStops, immigrationText, PURPOSES, type ImmigrationStop, type Purpose } from "./immigration.ts";
+export { immigrationCard, immigrationStops, immigrationText, PURPOSES, voiceLabel, type ImmigrationStop, type Purpose } from "./immigration.ts";
 export { routeMessage } from "./route.ts";
 export { acceptCandidates, LEARN_TOPICS, proposeFacts, type Accepted, type Candidate } from "./learner.ts";
 export { extractTrip, scopeGuard, type MediaLoader, type ScopePart } from "./models.ts";

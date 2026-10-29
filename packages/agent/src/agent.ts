@@ -11,7 +11,7 @@ import { convertUnits, mapsLink, RIGHTS_TOPIC, searchTravel, UNIT_NAMES, type cr
 import { crossesBorder, documentsFor, passportFromStatement } from "./documents.ts";
 import { RENTAL_CARS } from "./rentals.ts";
 import { assistanceFor } from "./assistance.ts";
-import { immigrationCard, immigrationStops, PURPOSES, type Purpose } from "./immigration.ts";
+import { immigrationCard, immigrationStops, PURPOSES, voiceLabel, type Purpose } from "./immigration.ts";
 import { createChecking, describeLocation, legInstant, localClock, locationIsFresh, usableCheckingLine, whereNow } from "./whereabouts.ts";
 import { acceptCandidates, proposeFacts } from "./learner.ts";
 import { extractTrip, scopeGuard, whoSpeaks, type MediaLoader, type ScopePart } from "./models.ts";
@@ -977,7 +977,8 @@ export function createEscalaAgent(
       const voiced = Boolean(deps.speak);
       if (deps.speak) {
         const speak = deps.speak;
-        const lines = cards.flatMap((c) => c.card.filter((k) => k.lines.length));
+        // Each note goes after a line saying which card it is (WhatsApp cannot caption a voice note).
+        const lines = cards.flatMap((c, i) => c.card.filter((k) => k.lines.length).map((k) => ({ ...k, label: voiceLabel(stops[i]!, k.lang, p.lang) })));
         if (deps.later) {
           // The answer goes out now; each note follows, in order, as soon as it is recorded.
           const later = deps.later;
@@ -991,11 +992,19 @@ export function createEscalaAgent(
             await new Promise((r) => setTimeout(r, 1500)); // the answer is sent right after this turn returns
             for (const k of lines) {
               const audio = await speak(k.lines.join(" "), k.lang).catch(() => null);
-              if (audio) await later(id, { kind: "voice", audio }).catch(() => undefined);
+              if (!audio) continue;
+              await later(id, { kind: "text", text: k.label }).catch(() => undefined);
+              await later(id, { kind: "voice", audio }).catch(() => undefined);
             }
           })();
         } else {
-          const notes = lines.map((k) => speak(k.lines.join(" "), k.lang).then((audio) => (audio ? ({ kind: "voice", audio } as OutboundMessage) : null)).catch(() => null));
+          const notes = lines.flatMap((k) => {
+            const audio = speak(k.lines.join(" "), k.lang).catch(() => null);
+            return [
+              audio.then((a) => (a ? ({ kind: "text", text: k.label } as OutboundMessage) : null)),
+              audio.then((a) => (a ? ({ kind: "voice", audio: a } as OutboundMessage) : null)),
+            ];
+          });
           outboxes.set(p.id, [...(outboxes.get(p.id) ?? []), ...notes]);
         }
       }

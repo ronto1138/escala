@@ -155,11 +155,28 @@ const ADD: Record<Lang, (xs: string) => string> = {
   fr: (x) => `Si vous me dites ${x}, je l'ajoute à la carte.`,
 };
 
+/**
+ * The line sent right before each voice note, which WhatsApp cannot caption: where, in which language, for whom.
+ * "🔊 Chicago O'Hare, en inglés: para el oficial de migración de Estados Unidos (tu conexión)."
+ */
+export function voiceLabel(stop: ImmigrationStop, cardLang: Lang, lang: Lang): string {
+  const locale = { en: "en-US", es: "es-MX", fr: "fr-CA" }[lang];
+  const country = new Intl.DisplayNames([locale], { type: "region" }).of(stop.country) ?? stop.country;
+  const tongue = new Intl.DisplayNames([locale], { type: "language" }).of(cardLang) ?? cardLang;
+  const city = cityName(stop.airport, lang);
+  const transit = stop.role === "transit";
+  return {
+    en: `🔊 ${city}, in ${tongue}: for the ${country} immigration officer (${transit ? "your connection" : "your arrival"}).`,
+    es: `🔊 ${city}, en ${tongue}: para el oficial de migración de ${country} (${transit ? "tu conexión" : "tu llegada"}).`,
+    fr: `🔊 ${city}, en ${tongue} : pour l'agent d'immigration (${country}, ${transit ? "votre correspondance" : "votre arrivée"}).`,
+  }[lang];
+}
+
 /** Said when the card also goes as a voice note: what it is for, without promising the booth allows it. */
 const VOICE: Record<Lang, string> = {
-  en: "🔊 Below, the card read aloud: listen before you land to practice it. If the officer lets you, you can play it.",
-  es: "🔊 Abajo te mando la tarjeta en audio: escúchala antes de aterrizar para practicarla. Si el oficial te lo permite, puedes ponérsela.",
-  fr: "🔊 Ci-dessous, la carte lue à voix haute : écoutez-la avant d'atterrir pour vous entraîner. Si l'agent le permet, vous pouvez la lui faire écouter.",
+  en: "🔊 Below, each card read aloud, with a line saying which one it is: listen before you land to practice it. If the officer lets you, you can play it.",
+  es: "🔊 Abajo te mando cada tarjeta en audio, con una línea que dice cuál es: escúchala antes de aterrizar para practicarla. Si el oficial te lo permite, puedes ponérsela.",
+  fr: "🔊 Ci-dessous, chaque carte lue à voix haute, avec une ligne qui dit laquelle : écoutez-la avant d'atterrir pour vous entraîner. Si l'agent le permet, vous pouvez la lui faire écouter.",
 };
 
 /** The message sent before the flight that lands at an immigration stop: a heads-up plus the card. */

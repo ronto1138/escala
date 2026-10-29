@@ -1,6 +1,6 @@
 import type { OutboundMessage, ParticipantId } from "@escala/channel";
 import type { Lang, Person } from "@escala/conversation";
-import { AIRPORTS, immigrationCard, immigrationStops, immigrationText, journeys, legInstant, type Purpose, type Trip } from "@escala/agent";
+import { AIRPORTS, immigrationCard, immigrationStops, immigrationText, journeys, legInstant, voiceLabel, type ImmigrationStop, type Purpose, type Trip } from "@escala/agent";
 import { international, ruleFor, remindAt, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
 import { TEMPLATE, TEMPLATE_LANG } from "./notifier.ts";
 
@@ -154,11 +154,13 @@ export function createBoardingReminders(deps: BoardingDeps) {
       sending.delete(key);
     }
   };
-  const voiceNotes = async (p: Person, cards: Array<{ lang: "en" | "es" | "fr"; lines: string[] }>) => {
+  const voiceNotes = async (p: Person, stop: ImmigrationStop, cards: Array<{ lang: "en" | "es" | "fr"; lines: string[] }>) => {
     for (const c of cards.filter((k) => k.lines.length)) {
       const audio = await deps.speak!(c.lines.join(" "), c.lang);
       if (!audio) continue;
       try {
+        // WhatsApp cannot caption a voice note: a line before it says which card it is.
+        await deps.send(p.id, { kind: "text", text: voiceLabel(stop, c.lang, p.lang) });
         await deps.send(p.id, { kind: "voice", audio });
         deps.log?.({ event: "immigration_card_voice", lang: c.lang });
       } catch (err) {
@@ -254,7 +256,7 @@ export function createBoardingReminders(deps: BoardingDeps) {
         const text = immigrationText(trip!, stop, facts, p.lang, Boolean(deps.speak));
         await send(key, p, { kind: "text", text }, "immigration_card", { country: stop.country, role: stop.role });
         // Each card in the officer's language, read aloud, after the text; it never holds up the other reminders.
-        if (told.has(key) && deps.speak) void voiceNotes(p, immigrationCard(trip!, stop, facts).card);
+        if (told.has(key) && deps.speak) void voiceNotes(p, stop, immigrationCard(trip!, stop, facts).card);
       }
     }
   };

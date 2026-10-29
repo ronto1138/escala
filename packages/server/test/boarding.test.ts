@@ -119,10 +119,13 @@ describe("immigration card before the flight", () => {
     await tick();
     await new Promise((r) => setTimeout(r, 10));
     const card = sent.find((m) => "text" in m && m.text.startsWith("🛂")) as { text: string };
-    expect(card.text).toContain("🔊 Abajo te mando la tarjeta en audio");
+    expect(card.text).toContain("🔊 Abajo te mando cada tarjeta en audio, con una línea que dice cuál es");
     expect(spoken).toEqual(["en: I am only connecting: today I fly on to Montreal on flight ZZ 567."]);
     expect(sent.filter((m) => m.kind === "voice")).toHaveLength(1);
-    expect(sent.findIndex((m) => m.kind === "voice")).toBeGreaterThan(sent.indexOf(card as OutboundMessage));
+    const v = sent.findIndex((m) => m.kind === "voice");
+    expect(v).toBeGreaterThan(sent.indexOf(card as OutboundMessage));
+    // WhatsApp cannot caption a voice note: the line right before it says which card it is (Ives, 29-oct).
+    expect(sent[v - 1]).toEqual({ kind: "text", text: "🔊 Chicago O'Hare, en inglés: para el oficial de migración de Estados Unidos (tu conexión)." });
   });
 });
 

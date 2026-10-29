@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { immigrationCard, immigrationStops, immigrationText } from "../src/immigration.ts";
+import { immigrationCard, immigrationStops, immigrationText, voiceLabel } from "../src/immigration.ts";
 
 const leg = (flight: string, from: string, to: string, date = "2026-11-02", dep = "07:00", arr = "09:30") => ({ flight, date, from, to, dep_local: dep, arr_local: arr });
 const viaChicago = { bookingRef: null, legs: [leg("ZZ1234", "MEX", "ORD", "2026-11-02", "08:00", "12:15"), leg("ZZ567", "ORD", "YUL", "2026-11-02", "14:45", "18:00")] };
@@ -68,6 +68,12 @@ describe("immigration card", () => {
   it("never writes the word null on a card (judge session 29-oct, second run)", () => {
     const [, montreal] = immigrationStops(viaChicago);
     expect(immigrationCard(viaChicago, montreal!, { stay: "null", stayWith: "friends", stayAddress: "4500 Rue Fictive" }).card[0]!.lines).toEqual(["I will stay with friends at 4500 Rue Fictive."]);
+  });
+
+  it("labels each voice note with where, in which language and for whom", () => {
+    const [chicago, montreal] = immigrationStops(viaChicago);
+    expect(voiceLabel(montreal!, "fr", "es")).toBe("🔊 Montreal, en francés: para el oficial de migración de Canadá (tu llegada).");
+    expect(voiceLabel(chicago!, "en", "en")).toBe("🔊 Chicago O'Hare, in English: for the United States immigration officer (your connection).");
   });
 });
 
