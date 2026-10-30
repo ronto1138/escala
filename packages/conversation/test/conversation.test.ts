@@ -110,10 +110,12 @@ describe("first contact", () => {
     expect(p.stage).toBe("ready");
     p.details = { stay: "Hotel Synthetic", purpose: "family" };
     p.boardingPasses = { ZZ1234: { boardingTime: "06:30" } };
+    p.passport = "MX";
     await sim.userSends("4", { kind: "text", text: "new trip: ZZ 890" });
     await sim.userSends("4", { kind: "text", text: "yes" });
     expect(p.details).toBeUndefined();
     expect(p.boardingPasses).toBeUndefined();
+    expect(p.passport).toBeUndefined(); // kept with the trip and deleted with it (Muse Code nightly audit, 30-oct)
   });
 
   it("takes a correction in the person's own words", async () => {

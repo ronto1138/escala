@@ -86,5 +86,13 @@ describe("bag claim letter", () => {
     const c = draftClaim({ trip: night, leg: night.legs[0]!, problem: "bag_lost", rules, expenses: [], evidence: [], lang: "en", today: "2026-11-05" });
     expect(c.deadline).toMatchObject({ days: 15, date: "2026-11-19" }); // arrives 4 Nov + 15 days
   });
+
+  it("does not take an unknown arrival time for an overnight flight (Muse Code nightly audit, 30-oct)", () => {
+    const unknown = { bookingRef: null, legs: [{ flight: "ZX4", date: "2026-11-03", from: "TIJ", to: "MEX", dep_local: "07:10", arr_local: "" }] };
+    const e = entries.find((x) => x.id === "mx-lac-62-baggage")!;
+    const rules = [{ id: e.id, instrument: e.instrument, article: e.article, source: e.source_url, ...(e.deadlines ? { deadlines: e.deadlines } : {}) }];
+    const c = draftClaim({ trip: unknown, leg: unknown.legs[0]!, problem: "bag_lost", rules, expenses: [], evidence: [], lang: "en", today: "2026-11-05" });
+    expect(c.deadline?.date).toBe("2026-11-18");
+  });
 });
 

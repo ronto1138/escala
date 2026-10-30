@@ -51,6 +51,18 @@ function clock(ms: number, tz: string | null): string {
 }
 
 /** The sentence after "flight ZZ 1234 …": departure, gate, and what the airline published, in local time. */
+/** The approved template carries one short change ("flight {{1}} {{2}}"): the time and gate, not the full brief. */
+function gateFragment(s: FlightSnapshot, lang: Lang): string {
+  const dep = Date.parse(s.departure.estimated ?? s.departure.scheduled ?? "");
+  const time = clock(dep, s.origin.timezone);
+  const g = s.departure.gate;
+  return {
+    en: `leaves at ${time} local time${g ? ` from gate ${g}` : ""}: time to head to your gate`,
+    es: `sale a las ${time} hora local${g ? ` por la puerta ${g}` : ""}: ya es momento de ir a tu puerta`,
+    fr: `part à ${time} heure locale${g ? `, porte ${g}` : ""} : il est temps d'aller à votre porte`,
+  }[lang];
+}
+
 export function boardingText(s: FlightSnapshot, lang: Lang, city: string, pass?: { boardingTime?: string; gate?: string }): string {
   const dep = Date.parse(s.departure.estimated ?? s.departure.scheduled ?? "");
   const tz = s.origin.timezone;
@@ -244,7 +256,7 @@ export function createBoardingReminders(deps: BoardingDeps) {
         const flight = pretty(norm(s.ident));
         const m: OutboundMessage = open
           ? { kind: "text", text: `${OPEN[p.lang](flight, body)}${s.source === "replay" ? ` ${SIMULATED[p.lang]}` : ""}` }
-          : { kind: "template", name: TEMPLATE, language: TEMPLATE_LANG[p.lang], bodyParams: [flight, body] };
+          : { kind: "template", name: TEMPLATE, language: TEMPLATE_LANG[p.lang], bodyParams: [flight, gateFragment(s, p.lang)] };
         await send(key, p, m, "boarding_reminder", { published: Boolean(ruleFor(s)), from_pass: Number.isFinite(printed) });
       }
 

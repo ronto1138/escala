@@ -1264,8 +1264,13 @@ export function createEscalaAgent(
       return draft.trim() ? [{ kind: "text" as const, text: draft.trim() }] : [];
     },
     reset(personId: string) {
+      // Everything this agent holds about the person goes with "delete everything" and with eviction.
       asked.delete(personId);
       askedAt.delete(personId);
+      turns.delete(personId);
+      currentText.delete(personId);
+      outboxes.delete(personId);
+      answered.delete(personId);
     },
     /** Drops per-person state after a day of silence. Run on a schedule. */
     sweep(now = Date.now()) {

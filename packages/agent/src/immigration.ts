@@ -90,7 +90,8 @@ export function immigrationCard(trip: Trip, stop: ImmigrationStop, given: CardFa
       const next = legs[i + 1];
       if (landed && next) {
         // The day it leaves, as the itinerary says it; "today" only when it is the day this flight lands.
-        const lands = landed.arr_local < landed.dep_local ? new Date(Date.parse(`${landed.date}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10) : landed.date;
+        // An unknown time ("") is not an overnight flight.
+        const lands = /^\d{2}:\d{2}$/.test(landed.arr_local) && /^\d{2}:\d{2}$/.test(landed.dep_local) && landed.arr_local < landed.dep_local ? new Date(Date.parse(`${landed.date}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10) : landed.date;
         const when = next.date === lands ? { en: "today", es: "hoy", fr: "aujourd'hui" }[lang] : { en: `on ${day(next.date, lang)}`, es: `el ${day(next.date, lang)}`, fr: `le ${day(next.date, lang)}` }[lang];
         const to = cityName(next.to, lang);
         out.push({

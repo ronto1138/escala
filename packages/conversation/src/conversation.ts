@@ -445,7 +445,10 @@ export class Conversation {
   private async confirm(p: Person) {
     if (!p.pending) return this.askForTrip(p);
     // A new trip without memory for future trips starts fresh: how they traveled last time is not kept.
-    if (p.trip && p.share !== "profile") delete p.style;
+    if (p.trip && p.share !== "profile") {
+      delete p.style;
+      delete p.passport; // privacy.ts: kept with the trip and deleted with it, unless memory for future trips is on
+    }
     // What they told about the last trip (stay, purpose, bags, passes) belongs to it: the next card must not repeat it.
     if (p.trip) {
       delete p.details;
