@@ -158,7 +158,10 @@ export function createMetaClient(opts: MetaClientOptions) {
 
       const text = await res.text();
       lastError = `HTTP ${res.status}: ${text.slice(0, 300)}`;
-      if (RETRYABLE.has(res.status) && attempt < maxRetries) {
+      // Meta answers a working model with "model_not_found" now and then (30-oct: 2 in 6 calls a minute apart): retried
+      // like a busy server before giving the model up for another.
+      const flaky = res.status === 404 && /model_not_found/.test(text);
+      if ((RETRYABLE.has(res.status) || flaky) && attempt < maxRetries) {
         await sleep(retryAfterMs(res.headers.get("retry-after")) ?? backoff(attempt));
         continue;
       }

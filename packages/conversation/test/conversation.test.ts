@@ -113,6 +113,25 @@ describe("first contact", () => {
     expect(p.pending?.lines).toEqual(["ZZ 1234"]);
   });
 
+  it("does not change how much it remembers on a later misreading, nor replay the trip (Ives' recording, 30-oct)", async () => {
+    const sim = new SimChannel(() => Date.parse("2026-11-01T15:00:00Z"));
+    const answered: string[] = [];
+    const conv = new Conversation({
+      channel: sim,
+      extractItinerary: async (m) => (m.kind === "text" && /\bZZ\s?\d+/.test(m.text) ? trip : null),
+      agent: async (m) => (answered.push(m.kind === "text" ? m.text : ""), [{ kind: "text", text: "ok" }]),
+      route: async (text) => (/\bZZ\s?\d+/.test(text) ? { kind: "itinerary" } : /^yes/i.test(text) ? { kind: "confirm" } : { kind: "share", share: /aeropuerto/.test(text) ? "profile" : "trip" }),
+    });
+    await sim.userSends("7", { kind: "text", text: "my flights: ZZ 1234 and ZZ 567" });
+    await sim.userSends("7", { kind: "text", text: "yes" });
+    await sim.userSends("7", { kind: "text", text: "just this trip" });
+    const p = conv.people.get("7")!;
+    expect(p.share).toBe("trip");
+    await sim.userSends("7", { kind: "text", text: "ok gracias, ya estoy llegando al aeropuerto, que hago" });
+    expect(p.share).toBe("trip");
+    expect(answered).toContain("ok gracias, ya estoy llegando al aeropuerto, que hago");
+  });
+
   it("asks before stopping when only the model read a wish to stop (Ives' recording, 30-oct)", async () => {
     const sim = new SimChannel(() => Date.parse("2026-11-01T15:00:00Z"));
     const answered: string[] = [];

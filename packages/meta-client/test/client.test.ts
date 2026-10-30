@@ -122,8 +122,25 @@ describe("model fallback (Oct 27: muse-spark-1.3 answered model_not_found)", () 
     const client = createMetaClient({ apiKey: "k", usage, fetch: fetchFake, sleep: async () => {} });
     expect(outputText(await client.responses({ model: "muse-spark-1.3", input: "x" }, { caller: "t" }))).toBe("ok");
     await client.responses({ model: "muse-spark-1.3", input: "y" }, { caller: "t" });
-    expect(asked).toEqual(["muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.2"]);
+    // Retried like a busy server first (Meta returns it now and then for a working model), then 1.2.
+    expect(asked).toEqual(["muse-spark-1.3", "muse-spark-1.3", "muse-spark-1.3", "muse-spark-1.2", "muse-spark-1.2"]);
     expect(usage.lines.filter((l) => l.ok).map((l) => [l.model, l.caller])).toEqual([["muse-spark-1.2", "t+fallback"], ["muse-spark-1.2", "t+fallback"]]);
+  });
+});
+
+describe("a one-off model_not_found from Meta (30-oct: 2 in 6 calls a minute apart)", () => {
+  it("stays on muse-spark-1.3 when the retry works", async () => {
+    const asked: string[] = [];
+    let n = 0;
+    const fetchFake = (async (_url: string, init: any) => {
+      asked.push(JSON.parse(init.body).model);
+      return n++ === 0
+        ? new Response(JSON.stringify({ error: { code: "model_not_found" } }), { status: 404 })
+        : new Response(JSON.stringify({ output_text: "ok", usage: { input_tokens: 10, output_tokens: 2 } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const client = createMetaClient({ apiKey: "k", usage: memorySink(), fetch: fetchFake, sleep: async () => {} });
+    expect(outputText(await client.responses({ model: "muse-spark-1.3", input: "x" }, { caller: "t" }))).toBe("ok");
+    expect(asked).toEqual(["muse-spark-1.3", "muse-spark-1.3"]);
   });
 });
 

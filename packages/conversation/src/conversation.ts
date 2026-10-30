@@ -396,6 +396,9 @@ export class Conversation {
         if (p.awaiting === "share") await this.say(p, T[p.lang].shareQuestion);
         return true;
       case "share":
+        // How much Escala remembers changes only when it is asking (or from the privacy menu): a misreading later on
+        // must not change the setting or replay the trip's documents (Ives' recording, 30-oct).
+        if (p.awaiting !== "share") return false;
         p.share = route.share;
         p.shareAsked = true;
         if (p.awaiting === "share") p.awaiting = null;
