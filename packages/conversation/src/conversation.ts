@@ -148,6 +148,9 @@ const RECENT_TURNS = 12;
 const RECENT_MS = 48 * 60 * 60 * 1000;
 
 /** When the model reads a wish to stop that was not the word itself: stopping is never done on one reading (Ives, 30-oct). */
+/** Lower case without accents, so "nomás" and "nomas" read the same. */
+const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+
 const CONFIRM_STOP: Record<Lang, string> = {
   en: "Do you want me to stop writing to you? Reply STOP to confirm. If not, tell me again what you need and I'll keep helping.",
   es: "¿Quieres que deje de escribirte? Responde ALTO para confirmar. Si no, cuéntame otra vez qué necesitas y sigo contigo.",
@@ -276,7 +279,9 @@ export class Conversation {
     if (PRIVACY_WORDS.includes(word)) return this.say(p, T[p.lang].privacy);
 
     // The demo trip, by its button or by asking for it in so many words: shown like any itinerary, to confirm.
-    if (this.deps.demoTrip && (demoTap || DEMO_WORDS.includes(word))) {
+    const tokensDemo = new Set(fold(word).split(/[^\p{L}'-]+/u).filter(Boolean));
+    const askedDemo = DEMO_WORDS.includes(word) || (words(text).length <= 5 && (tokensDemo.has("demo") || tokensDemo.has("demostracion")));
+    if (this.deps.demoTrip && (demoTap || askedDemo)) {
       const demo = this.deps.demoTrip(p);
       if (demo) {
         p.pending = demo;
@@ -291,6 +296,24 @@ export class Conversation {
       if (EXACT_NO.includes(word)) {
         p.awaiting = "fix";
         return this.say(p, T[p.lang].fixPrompt);
+      }
+    }
+
+    // The answer to "only this trip or also learn?" in its plain words needs no model (Ives' recording, 30-oct: the model
+    // once read "nomas este viaje" as a privacy question and the demo button never came).
+    if (p.awaiting === "share" && m.kind === "text" && words(text).length <= 6) {
+      const t = T[p.lang].words;
+      const plain = fold(word);
+      const said = (xs: string[]) => xs.some((w) => plain.includes(fold(w)));
+      const choice = said(t.tripOnly) ? "trip" : said(t.remember) ? "profile" : null;
+      if (choice) {
+        p.share = choice;
+        p.awaiting = null;
+        await this.deps.onShareChanged?.(p);
+        await this.say(p, p.share === "profile" ? T[p.lang].sharedProfile : T[p.lang].sharedTrip);
+        if (!p.trip && !p.pending) return this.askForTrip(p);
+        if (p.trip) await this.afterTrip(p);
+        return;
       }
     }
 
@@ -369,6 +392,8 @@ export class Conversation {
         return true;
       case "privacy":
         await this.say(p, T[p.lang].privacy);
+        // Still waiting for "only this trip or also learn?": ask it again so the onboarding does not stall.
+        if (p.awaiting === "share") await this.say(p, T[p.lang].shareQuestion);
         return true;
       case "share":
         p.share = route.share;

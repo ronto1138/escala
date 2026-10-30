@@ -225,7 +225,7 @@ export const T: Record<Lang, Texts> = {
         ],
       },
     ],
-    words: { yes: ["sí", "si", "claro", "correcto", "está bien", "esta bien", "ok", "va", "perfecto", "exacto", "así es"], no: ["no", "corrige", "corregir", "mal", "está mal"], remember: ["acuérdate", "acuerdate", "acordarte", "acuerdes", "recuérdame", "recuerdame", "recuerda", "aprende", "aprender", "las dos", "ambas", "próxima"], tripOnly: ["solo este", "sólo este", "nada más este", "solo el viaje"] },
+    words: { yes: ["sí", "si", "claro", "correcto", "está bien", "esta bien", "ok", "va", "perfecto", "exacto", "así es"], no: ["no", "corrige", "corregir", "mal", "está mal"], remember: ["acuérdate", "acuerdate", "acordarte", "acuerdes", "recuérdame", "recuerdame", "recuerda", "aprende", "aprender", "las dos", "ambas", "próxima"], tripOnly: ["solo este", "sólo este", "nada más este", "nada mas este", "nomás este", "nomas este", "solamente este", "solo el viaje", "sólo el viaje"] },
     notYet: "Esa parte todavía se está construyendo. Escríbeme tu pregunta y te ayudo directamente.",
     stopped: "Listo. No te vuelvo a escribir. Tu expediente se queda hasta que venzan los plazos para reclamar, por si lo necesitas; escribe BORRAR y lo borro ahora.",
   },

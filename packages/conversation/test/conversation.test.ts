@@ -96,6 +96,23 @@ describe("first contact", () => {
     expect(lastText()).toBe(T.en.shareQuestion);
   });
 
+  it("takes \"nomas este viaje\" without a model and starts the demo on a short \"probar demo\" (Ives' recording, 30-oct)", async () => {
+    const sim = new SimChannel(() => Date.parse("2026-11-01T15:00:00Z"));
+    const conv = new Conversation({
+      channel: sim,
+      extractItinerary: async () => null,
+      route: async () => ({ kind: "privacy" }), // the misreading
+      demoTrip: () => ({ lines: ["ZZ 1234"], trip }),
+    });
+    await sim.userSends("8", { kind: "text", text: "hola" });
+    await sim.userSends("8", { kind: "text", text: "nomas este viaje" });
+    const p = conv.people.get("8")!;
+    expect(p.share).toBe("trip");
+    expect(p.awaiting).toBeNull();
+    await sim.userSends("8", { kind: "text", text: "probar demo" });
+    expect(p.pending?.lines).toEqual(["ZZ 1234"]);
+  });
+
   it("asks before stopping when only the model read a wish to stop (Ives' recording, 30-oct)", async () => {
     const sim = new SimChannel(() => Date.parse("2026-11-01T15:00:00Z"));
     const answered: string[] = [];
@@ -328,7 +345,7 @@ describe("Oct 27 field test: read in context, across restarts", () => {
       channel: sim2, extractItinerary: async () => null, store,
       route: async (text, p) => (seen.push({ text, recent: (p.recent ?? []).map((t) => `${t.role}: ${t.text.slice(0, 20)}`) }), { kind: "share", share: "profile" }),
     });
-    await sim2.userSends("51", { kind: "text", text: "puedes acordarte de todo" });
+    await sim2.userSends("51", { kind: "text", text: "la segunda opción, por favor" }); // only the model can read this one
     const out = sim2.transcript.filter((e) => e.direction === "out").map((e) => (e.message as { text: string }).text);
     expect(out[0]).toBe(T.es.sharedProfile); // not the introduction again
     expect(seen[0]!.recent.some((r) => r.startsWith("escala: Antes de empezar"))).toBe(true);
