@@ -81,7 +81,9 @@ export function createMetaClient(opts: MetaClientOptions) {
       return await viaMeta(req, call);
     } catch (err) {
       if (!canFailsafe || !metaUnavailable(err)) throw err;
-      metaDownUntil = Date.now() + 2 * 60_000; // do not wait on Meta for every message while it is down
+      // Do not wait on Meta for every message while it is down, but come back soon: its outages so far lasted a minute
+      // or two, and the open model on Baseten reads messages less well (Ives' recording, 30-oct).
+      metaDownUntil = Date.now() + 45_000;
       return opts.failsafe!(req, call);
     }
   }
@@ -93,7 +95,7 @@ export function createMetaClient(opts: MetaClientOptions) {
       return await once(req, call);
     } catch (err) {
       if (!alt || !(err instanceof MetaApiError) || err.status !== 404 || !/model_not_found/.test(err.body)) throw err;
-      unavailableUntil.set(req.model, Date.now() + 10 * 60_000);
+      unavailableUntil.set(req.model, Date.now() + 60_000);
       return once({ ...req, model: alt }, { ...call, caller: `${call.caller}+fallback` });
     }
   }

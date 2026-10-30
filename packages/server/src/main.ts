@@ -105,7 +105,12 @@ const conversation = new Conversation({
   channel: { onInbound: (h) => channel.onInbound(h), send: (to, m) => (pacer.touch(to), channel.send(to, m)) },
   store: people,
   // What each message is, read by Muse Spark with the conversation as context; keywords only if it fails.
-  route: (text, p) => routeMessage(client, text, p),
+  // What each message was read as (the kind only, never the text), to diagnose a misreading like the 30-oct "stop".
+  route: async (text, p) => {
+    const r = await routeMessage(client, text, p);
+    log({ event: "route", kind: r.kind, awaiting: p.awaiting ?? null });
+    return r;
+  },
   extractItinerary: escala.extractItinerary,
   agent: escala.agent!,
   crossesBorder: escala.crossesBorder!,
