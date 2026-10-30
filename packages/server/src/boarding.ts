@@ -1,6 +1,6 @@
 import type { OutboundMessage, ParticipantId } from "@escala/channel";
 import type { Lang, Person } from "@escala/conversation";
-import { AIRPORTS, immigrationCard, immigrationStops, immigrationText, journeys, legInstant, voiceLabel, whereNow, type ImmigrationStop, type Purpose, type Trip } from "@escala/agent";
+import { AIRPORTS, immigrationStops, immigrationText, journeys, legInstant, whereNow, type Purpose, type Trip } from "@escala/agent";
 import { international, ruleFor, remindAt, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
 import { TEMPLATE, TEMPLATE_LANG } from "./notifier.ts";
 
@@ -9,7 +9,8 @@ export { BOARDING, remindAt, ruleFor, type BoardingRule } from "@escala/feeds";
 export interface BoardingDeps {
   feed: Pick<FlightFeed, "findByIdent"> & { now?(): number };
   people(): Iterable<Person>;
-  send(to: ParticipantId, m: OutboundMessage): Promise<unknown>;
+  /** One message, or a group that goes out together (a 🔊 line and its voice note). */
+  send(to: ParticipantId, m: OutboundMessage | OutboundMessage[]): Promise<unknown>;
   windowOpen(to: ParticipantId): boolean;
   /** Reads a card aloud as a voice note; absent or null when speech is not available. */
   speak?(text: string, lang: "en" | "es" | "fr"): Promise<Uint8Array | null>;
@@ -166,21 +167,6 @@ export function createBoardingReminders(deps: BoardingDeps) {
       sending.delete(key);
     }
   };
-  const voiceNotes = async (p: Person, stop: ImmigrationStop, cards: Array<{ lang: "en" | "es" | "fr"; lines: string[] }>) => {
-    for (const c of cards.filter((k) => k.lines.length)) {
-      const audio = await deps.speak!(c.lines.join(" "), c.lang);
-      if (!audio) continue;
-      if (p.stage !== "ready" || !deps.windowOpen(p.id)) return; // STOP, or the window closed, while recording
-      try {
-        // WhatsApp cannot caption a voice note: a line before it says which card it is.
-        await deps.send(p.id, { kind: "text", text: voiceLabel(stop, c.lang, p.lang) });
-        await deps.send(p.id, { kind: "voice", audio });
-        deps.log?.({ event: "immigration_card_voice", lang: c.lang });
-      } catch (err) {
-        deps.log?.({ event: "immigration_card_voice_failed", error: String(err).slice(0, 160) });
-      }
-    }
-  };
   return async function tick(): Promise<void> {
     const now = deps.feed.now?.() ?? Date.now();
     for (const p of deps.people()) {
@@ -277,8 +263,7 @@ export function createBoardingReminders(deps: BoardingDeps) {
         const facts = { stay: d.stay, stayWith: d.stayWith, stayAddress: d.stayAddress, purpose: d.purpose as Purpose | undefined, passport: p.passport };
         const text = immigrationText(trip!, stop, facts, p.lang, Boolean(deps.speak));
         await send(key, p, { kind: "text", text }, "immigration_card", { country: stop.country, role: stop.role });
-        // Each card in the officer's language, read aloud, after the text; it never holds up the other reminders.
-        if (told.has(key) && deps.speak) void voiceNotes(p, stop, immigrationCard(trip!, stop, facts).card);
+        // The cards read aloud wait until the traveler asks, at immigration (Ives, 30-oct): only the text goes ahead.
       }
     }
   };

@@ -34,7 +34,7 @@ describe("heading to the gate", () => {
     const person = { id: "a", lang: "es", stage: "ready", details: { checkedBags: 0 }, trip: { legs: [{ flight: "ZZ1234" }, { flight: "ZZ567" }] } } as unknown as Person;
     const tick = createBoardingReminders({
       feed: { findByIdent: (i) => (i === "ZZ1234" ? first : second), now: () => now },
-      people: () => [person], send: async (to, m) => void sent.push({ to, m }), windowOpen: () => true, cityOf: () => "Austin",
+      people: () => [person], send: async (to, m) => void sent.push(...[m].flat().map((x) => ({ to, m: x }))), windowOpen: () => true, cityOf: () => "Austin",
     });
     await tick();
     await tick();
@@ -51,7 +51,7 @@ describe("around the airport", () => {
     const sent: OutboundMessage[] = [];
     const tick = createBoardingReminders({
       feed: { findByIdent: (i) => (i === "ZZ1234" ? first : second), now: () => now },
-      people: () => [person], send: async (_to, m) => void sent.push(m), windowOpen: () => true, cityOf: () => "Austin",
+      people: () => [person], send: async (_to, m) => void sent.push(...[m].flat()), windowOpen: () => true, cityOf: () => "Austin",
     });
     return { sent, tick };
   };
@@ -89,7 +89,7 @@ describe("immigration card before the flight", () => {
     let open = false;
     const tick = createBoardingReminders({
       feed: { findByIdent: (i) => (i === "ZZ1234" ? intl : second), now: () => Date.parse("2026-11-02T20:00:00Z") },
-      people: () => [person], send: async (_to, m) => void sent.push(m), windowOpen: () => open, cityOf: () => "Ciudad de México",
+      people: () => [person], send: async (_to, m) => void sent.push(...[m].flat()), windowOpen: () => open, cityOf: () => "Ciudad de México",
     });
     await tick();
     expect(sent.some((m) => "text" in m && m.text.startsWith("🛂"))).toBe(false);
@@ -101,7 +101,7 @@ describe("immigration card before the flight", () => {
     expect((cards[0] as { text: string }).text).toContain("📋 I am only connecting: today I fly on to Montreal on flight ZZ 567.");
   });
 
-  it("reads each card aloud after the text, once, in the officer's language", async () => {
+  it("sends the card as text and offers the audio for when they are in the immigration line (Ives, 30-oct)", async () => {
     const intl = { ...first, origin: { iata: "MEX", icao: "MMMX", timezone: "America/Mexico_City" } } as FlightSnapshot;
     const trip = { bookingRef: null, legs: [
       { flight: "ZZ1234", date: "2026-11-02", from: "MEX", to: "ORD", dep_local: "14:50", arr_local: "17:15" },
@@ -112,20 +112,16 @@ describe("immigration card before the flight", () => {
     const spoken: string[] = [];
     const tick = createBoardingReminders({
       feed: { findByIdent: (i) => (i === "ZZ1234" ? intl : second), now: () => Date.parse("2026-11-02T20:00:00Z") },
-      people: () => [person], send: async (_to, m) => void sent.push(m), windowOpen: () => true, cityOf: () => "Ciudad de México",
+      people: () => [person], send: async (_to, m) => void sent.push(...[m].flat()), windowOpen: () => true, cityOf: () => "Ciudad de México",
       speak: async (text, lang) => (spoken.push(`${lang}: ${text}`), new Uint8Array([1, 2, 3])),
     });
     await tick();
     await tick();
     await new Promise((r) => setTimeout(r, 10));
     const card = sent.find((m) => "text" in m && m.text.startsWith("🛂")) as { text: string };
-    expect(card.text).toContain("🔊 Abajo te mando cada tarjeta en audio, con una línea que dice cuál es");
-    expect(spoken).toEqual(["en: I am only connecting: today I fly on to Montreal on flight ZZ 567."]);
-    expect(sent.filter((m) => m.kind === "voice")).toHaveLength(1);
-    const v = sent.findIndex((m) => m.kind === "voice");
-    expect(v).toBeGreaterThan(sent.indexOf(card as OutboundMessage));
-    // WhatsApp cannot caption a voice note: the line right before it says which card it is (Ives, 29-oct).
-    expect(sent[v - 1]).toEqual({ kind: "text", text: "🔊 Chicago O'Hare, en inglés: para el oficial de migración de Estados Unidos (tu conexión)." });
+    expect(card.text).toContain("🔊 Cuando estés en la fila de migración, escríbeme y te mando cada tarjeta en audio");
+    expect(spoken).toEqual([]);
+    expect(sent.filter((m) => m.kind === "voice")).toHaveLength(0);
   });
 });
 
@@ -137,7 +133,7 @@ describe("reminder the day before", () => {
     const sent: OutboundMessage[] = [];
     const tick = createBoardingReminders({
       feed: { findByIdent: () => undefined, now: () => Date.parse(nowIso) },
-      people: () => [person], send: async (_to, m) => void sent.push(m), windowOpen: () => open,
+      people: () => [person], send: async (_to, m) => void sent.push(...[m].flat()), windowOpen: () => open,
       cityOf: (c, l) => (({ CDG: { en: "Paris CDG", es: "París CDG" }, MEX: { en: "Mexico City", es: "Ciudad de México" } } as any)[c]?.[l]),
     });
     return { sent, tick };
@@ -166,7 +162,7 @@ describe("reminder the day before", () => {
     expect(away.sent).toHaveLength(0); // without knowing where they are: the airport's hours, too late to write
     const person = { id: "m", lang: "en", stage: "ready", trip, location: { lat: 19.43, lon: -99.08, at: "2026-11-04T21:00:00Z" } } as unknown as Person;
     const sent: OutboundMessage[] = [];
-    const tick = createBoardingReminders({ feed: { findByIdent: () => undefined, now: () => Date.parse(at) }, people: () => [person], send: async (_t, m) => void sent.push(m), windowOpen: () => true });
+    const tick = createBoardingReminders({ feed: { findByIdent: () => undefined, now: () => Date.parse(at) }, people: () => [person], send: async (_t, m) => void sent.push(...[m].flat()), windowOpen: () => true });
     await tick();
     expect(sent).toHaveLength(1);
   });
@@ -182,7 +178,7 @@ describe("another trip's flight with the same number", () => {
   it("gets no reminder from the followed flight when its route differs (escenario 5, 29-oct)", async () => {
     const person = { id: "x", lang: "en", stage: "ready", details: { checkedBags: 0 }, trip: { legs: [{ flight: "ZZ1234", date: "2026-11-02", from: "MEX", to: "ORD", dep_local: "08:00", arr_local: "12:00" }] } } as unknown as Person;
     const sent: OutboundMessage[] = [];
-    const tick = createBoardingReminders({ feed: { findByIdent: () => first, now: () => Date.parse("2026-11-02T13:20:00Z") }, people: () => [person], send: async (_t, m) => void sent.push(m), windowOpen: () => true });
+    const tick = createBoardingReminders({ feed: { findByIdent: () => first, now: () => Date.parse("2026-11-02T13:20:00Z") }, people: () => [person], send: async (_t, m) => void sent.push(...[m].flat()), windowOpen: () => true });
     await tick();
     expect(sent.filter((m) => m.kind === "text" && m.text.startsWith("🛫"))).toHaveLength(0);
   });

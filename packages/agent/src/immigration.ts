@@ -184,9 +184,9 @@ export function voiceLabel(stop: ImmigrationStop, cardLang: Lang, lang: Lang): s
 
 /** Said when the card also goes as a voice note: what it is for, without promising the booth allows it. */
 const VOICE: Record<Lang, string> = {
-  en: "🔊 Below, each card read aloud, with a line saying which one it is: listen before you land to practice it. If the officer lets you, you can play it.",
-  es: "🔊 Abajo te mando cada tarjeta en audio, con una línea que dice cuál es: escúchala antes de aterrizar para practicarla. Si el oficial te lo permite, puedes ponérsela.",
-  fr: "🔊 Ci-dessous, chaque carte lue à voix haute, avec une ligne qui dit laquelle : écoutez-la avant d'atterrir pour vous entraîner. Si l'agent le permet, vous pouvez la lui faire écouter.",
+  en: "🔊 When you are in the immigration line, write to me and I'll send you each card read aloud, to listen to and practice. If the officer lets you, you can play it.",
+  es: "🔊 Cuando estés en la fila de migración, escríbeme y te mando cada tarjeta en audio para que la escuches y la practiques. Si el oficial te lo permite, puedes ponérsela.",
+  fr: "🔊 Quand vous serez dans la file de l'immigration, écrivez-moi et je vous enverrai chaque carte lue à voix haute, pour l'écouter et vous entraîner. Si l'agent le permet, vous pouvez la lui faire écouter.",
 };
 
 /** The message sent before the flight that lands at an immigration stop: a heads-up plus the card. */

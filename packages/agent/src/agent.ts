@@ -42,7 +42,7 @@ export interface AgentDeps {
   /** Reads a card aloud as a voice note (OGG/Opus); null when it could not. Without it, cards go as text only. */
   speak?: (text: string, lang: Lang) => Promise<Uint8Array | null>;
   /** Sends a message after the answer, when it is ready (the voice notes); without it the answer waits for them. */
-  later?: (personId: string, m: OutboundMessage) => Promise<void>;
+  later?: (personId: string, m: OutboundMessage | OutboundMessage[]) => Promise<void>;
 }
 
 /** What a shared location becomes for the agent: the place is given separately, in the instructions. */
@@ -74,7 +74,9 @@ const PASS_UNREADABLE: Record<Lang, string> = {
 /** How every answer is written, by the kind of traveler. */
 const STYLE: Record<"novice" | "frequent" | "unknown", string> = {
   novice:
-    "This traveler is new to flying or nervous: one step at a time (at most three short steps per message), plain words, explain any airport word the first time (check in, gate, connection), calm and reassuring without being sugary, and end with what to tell you when the step is done. Offer a 📋 card when they will have to talk to staff. ",
+    "This traveler is new to flying or nervous (Ives, 30-oct: a first-time traveler needs to be guided): guide them one step at a time. Give only the next step, in one or two short lines with plain words, " +
+    "then ask them to tell you where they are or what they see once it is done, and wait for their answer before the following step; never list the steps that come later. " +
+    "Explain any airport word the first time (check in, gate, connection), be calm and reassuring without being sugary, and offer a 📋 card when they will have to talk to staff. ",
   frequent: "This traveler flies often: the facts first and short, no explanations of airport basics, all the steps at once. ",
   unknown: "You don't know yet how used to flying they are: be clear and brief, and adjust if they show it (then save it with set_traveler_style). ",
 };
@@ -224,7 +226,7 @@ const TOOLS = [
   {
     type: "function",
     name: "special_assistance",
-    description: "Free airport assistance (wheelchair, escort through security, immigration and connections) at the airports of this trip: what each jurisdiction's own text says and how to ask for it.",
+    description: "Only when they ask for help moving around the airport, or accept your offer of it. Free airport assistance (wheelchair, escort through security, immigration and connections) at the airports of this trip: what each jurisdiction's own text says and how to ask for it.",
     parameters: { type: "object", additionalProperties: false, required: [], properties: {} },
     strict: true,
   },
@@ -253,8 +255,15 @@ const TOOLS = [
   {
     type: "function",
     name: "immigration_card",
-    description: "For each immigration stop on the route (entry, or a US connection): a card in the officer's language with only the traveler's own facts (connection, purpose, stay, return flight), to screenshot before landing.",
-    parameters: { type: "object", additionalProperties: false, required: [], properties: {} },
+    description: "Only when they ask about immigration or what the officer will ask. For each immigration stop on the route (entry, or a US connection): a card in the officer's language with only the traveler's own facts (connection, purpose, stay, return flight), to screenshot before landing; each card also goes as a voice note.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["read_aloud"],
+      properties: {
+        read_aloud: { type: "boolean", description: "true only when they are at immigration now (in the line, about to land) or ask to hear the cards; false otherwise" },
+      },
+    },
     strict: true,
   },
   {
@@ -707,6 +716,9 @@ export function createEscalaAgent(
       "You give information with sources, not legal advice; never promise compensation. Never book anything, and offer only what you can do: you cannot see other flights or seats. " +
       "Entry and transit documents: when the traveler tells which passport they fly with, call set_passport (dual nationals: the one they fly with), then documents_for_trip, and say for each country on the route (leaving, the connection, arriving) what it asks and which forms to fill, naming the official site (\"canada.ca, Oct 28\"); write a full link only where they must go to fill something (like the FEM). Keep it short. " +
       "Bag claims: when they want to claim for a delayed, lost or damaged bag, call rights_for_trip and then draft_claim; never write the letter yourself. Say first, in a few lines, where to send it (the airline's baggage claim form or customer relations, keeping proof of sending), the deadline it returns and the blanks still to fill; Escala never takes a cut and this is not legal advice. " +
+      "Answer what the latest message asks or tells, and only that. When it brings several things at once (passport, stay, a difficulty), save them with the tools, answer the most pressing one in a few lines, and offer the next in one short question (\"¿Vemos ahora lo de la silla de ruedas?\"); never pack documents, assistance and cards into one message. " +
+      "When they say they landed or are at an airport in another country, include one line on how to connect to that airport's free WiFi so they stay reachable (Ives, 30-oct), looked up with search_travel_info on the airport's own pages and said with its source; if you cannot confirm it, say to look for the airport's free WiFi network. " +
+      "Never give immigration cards unless they ask about immigration or what an officer will ask: the card reaches them on its own before the flight. " +
       "Immigration: when they ask what the officer will ask, how to prepare, or what to answer, call immigration_card and give its cards as written; never script anything the card does not hold (no invented ties, money or reasons), and don't describe what happens at the booth (stamps, questions, steps): you have no source for it. " +
       "Never state a visa, authorization or entry requirement that documents_for_trip did not return; for a country it does not cover, say you don't have it verified yet and give its official page; if a rule is NO_VERIFICADO, say so. " +
       "You cannot message other people yet: if asked to tell someone something, say so kindly and give a short ready-to-forward message in the traveler's language with only what they told you or the trip shows. " +
@@ -992,7 +1004,7 @@ export function createEscalaAgent(
       const facts = { stay: d.stay, stayWith: d.stayWith, stayAddress: d.stayAddress, purpose: d.purpose as Purpose | undefined, passport: p.passport };
       const cards = stops.map((s) => immigrationCard(trip, s, facts));
       const voiced = Boolean(deps.speak);
-      if (deps.speak) {
+      if (deps.speak && args.read_aloud === true) {
         const speak = deps.speak;
         // Each note goes after a line saying which card it is (WhatsApp cannot caption a voice note).
         const lines = cards.flatMap((c, i) => c.card.filter((k) => k.lines.length).map((k) => ({ ...k, label: voiceLabel(stops[i]!, k.lang, p.lang) })));
@@ -1011,8 +1023,7 @@ export function createEscalaAgent(
               const audio = await speak(k.lines.join(" "), k.lang).catch(() => null);
               if (!audio) continue;
               if (p.stage !== "ready") return; // they said STOP while the notes were being recorded
-              await later(id, { kind: "text", text: k.label }).catch(() => undefined);
-              await later(id, { kind: "voice", audio }).catch(() => undefined);
+              await later(id, [{ kind: "text", text: k.label }, { kind: "voice", audio }]).catch(() => undefined);
             }
           })();
         } else {
@@ -1028,7 +1039,9 @@ export function createEscalaAgent(
       }
       return {
         stops: cards,
-        voice_notes: voiced ? "each card also goes right after your answer as a voice note in the officer's language: say in one line it is to listen to before landing to practice, and to play only if the officer allows" : null,
+        voice_notes: voiced && args.read_aloud === true
+          ? "each card also goes right after your answer as a voice note in the officer's language: say in one line it is to listen to and practice, and to play only if the officer allows"
+          : voiced ? "not sent now: say in one line that when they are in the immigration line they can write to you and you'll send each card read aloud" : null,
         note: "give each card as written, starting with \"📋\", and say to screenshot it before landing; at the officer's booth they read or show it, never record or call. If something is missing, ask for it in one line; never add a fact the card does not have",
       };
     }

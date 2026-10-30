@@ -18,6 +18,7 @@ import { Budget } from "./budget.ts";
 import { CloudApiChannel } from "./cloud.ts";
 import { createNotifier } from "./notifier.ts";
 import { createBoardingReminders } from "./boarding.ts";
+import { createPacer } from "./pacer.ts";
 import { createTestPhase, NOT_ENROLLED, SqliteTesterStore, TEST_NOTICE } from "./testers.ts";
 import { createWebhookHandler, tag } from "./webhook.ts";
 
@@ -91,13 +92,17 @@ log({ event: "speech", on: Boolean(speak) });
 
 // What the agent decided, for the operations report: counts and kinds only, never content.
 const escala = createEscalaAgent({
-  ...(speak ? { speak, later: async (id: string, m: OutboundMessage) => void (await channel.send(id, m)) } : {}),
+  ...(speak ? { speak, later: (id: string, m: OutboundMessage | OutboundMessage[]) => pacer.send(id, m) } : {}),
   client, feed, entries: loadEntries(), media: channel, memory, ...(learner ? { learner } : {}), convertCurrency: createRates(),
-  progress: async (id, text) => void (await channel.send(id, { kind: "text", text })),
+  progress: async (id, text) => {
+    pacer.touch(id);
+    await channel.send(id, { kind: "text", text });
+  },
   trace: (s: TraceStep) => log(traceEvent(s)),
 });
 const conversation = new Conversation({
-  channel,
+  // Answers go out at once, and hold what Escala would send on its own until the traveler has read them.
+  channel: { onInbound: (h) => channel.onInbound(h), send: (to, m) => (pacer.touch(to), channel.send(to, m)) },
   store: people,
   // What each message is, read by Muse Spark with the conversation as context; keywords only if it fails.
   route: (text, p) => routeMessage(client, text, p),
@@ -218,7 +223,7 @@ const deliver = (incoming: InboundMessage) => {
   const received = Date.now();
   const next = (queues.get(m.from) ?? Promise.resolve())
     .then(() => (notice ? channel.send(m.from, { kind: "text", text: TEST_NOTICE }).then(() => undefined) : undefined))
-    .then(() => channel.deliver(m))
+    .then(() => (pacer.touch(m.from), channel.deliver(m)))
     .then(() => log({ event: "handled", from: tag(m.from), kind: m.kind, ms: Date.now() - received }))
     .catch((err) => log({ event: "error", from: tag(m.from), error: String(err).slice(0, 200) }))
     .finally(() => pending.set(m.from, Math.max(0, (pending.get(m.from) ?? 1) - 1)));
@@ -240,17 +245,25 @@ channel.send = async (to, m) => {
     throw err;
   }
 };
+const pacer = createPacer({
+  send: (to, m) => channel.send(to, m),
+  gapMs: 4_000,
+  quietMs: 40_000, // Ives, 30-oct: Escala waits for the traveler's pauses, not the other way around
+  allowed: (to) => conversation.people.get(to)?.stage === "ready",
+});
 
+// What Escala sends on its own goes through one paced line per person (Ives' recording, 30-oct: eight messages in
+// under a minute). Defined here; the agent and the conversation above only call it once messages flow.
 // Flight changes become messages: free text inside the 24-hour window, the approved template outside it.
 // A delay and two gate changes seconds apart go out as one update.
-const notify = createNotifier({ send: (to, m) => channel.send(to, m), windowOpen: (to) => channel.windowOpen(to), people: () => conversation.people.values(), log, coalesceMs: 20_000 });
+const notify = createNotifier({ send: (to, m) => pacer.send(to, m).then(() => ({ id: "" })), windowOpen: (to) => channel.windowOpen(to), people: () => conversation.people.values(), log, coalesceMs: 20_000 });
 feed.subscribe((events, snap) => void notify(events, snap));
 
 // Heading to the gate: once per flight, ahead of what the airline publishes (boarding starts, be at the gate, gate closes).
 const boarding = createBoardingReminders({
   feed,
   people: () => conversation.people.values(),
-  send: (to, m) => channel.send(to, m),
+  send: (to, m) => pacer.send(to, m),
   windowOpen: (to) => channel.windowOpen(to),
   cityOf: (code, lang) => cityName(code, lang),
   ...(speak ? { speak } : {}),
