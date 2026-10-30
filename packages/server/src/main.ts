@@ -52,7 +52,9 @@ const usage = {
 // Muse Spark Open on Baseten: the memory that learns (D36), and the last line of the failsafe when the Meta Model API
 // does not answer (1.3 → 1.2 → Muse Spark Open; all Meta models). Optional; without the key there is no third line.
 const learner = env.BASETEN_API_KEY ? createOpenModelClient({ apiKey: env.BASETEN_API_KEY, usage, timeoutMs: 60_000 }) : undefined;
-const client = createMetaClient({ apiKey: need("META_API_KEY"), usage, timeoutMs: 90_000, ...(learner ? { failsafe: responsesViaOpen(learner) } : {}) });
+// META_BASE_URL + META_PROXY_TOKEN send Meta calls through an egress proxy (30-oct: Meta rejected Railway's network).
+const metaVia = env.META_BASE_URL && env.META_PROXY_TOKEN ? { baseUrl: env.META_BASE_URL, headers: { "x-escala-proxy": env.META_PROXY_TOKEN } } : {};
+const client = createMetaClient({ apiKey: need("META_API_KEY"), usage, timeoutMs: 90_000, ...metaVia, ...(learner ? { failsafe: responsesViaOpen(learner) } : {}) });
 const dbPath = env.MEMORY_DB ?? "data/memory.db";
 mkdirSync(dirname(dbPath), { recursive: true });
 const crypto = MemoryCrypto.fromEnv();
@@ -289,14 +291,14 @@ void (async () => {
   // Straight to Meta, not through the failsafe, three times a few seconds apart: the status as Meta gave it.
   for (let i = 0; i < 3; i++) {
     try {
-      const r = await fetch("https://api.meta.ai/v1/responses", {
+      const r = await fetch(`${env.META_BASE_URL ?? "https://api.meta.ai/v1"}/responses`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${need("META_API_KEY")}`, "Content-Type": "application/json" },
+        headers: { ...(env.META_PROXY_TOKEN ? { "x-escala-proxy": env.META_PROXY_TOKEN } : {}), Authorization: `Bearer ${need("META_API_KEY")}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model: "muse-spark-1.3", input: "ok", max_output_tokens: 16, reasoning: { effort: "low" }, store: false }),
         signal: AbortSignal.timeout(30_000),
       });
       const rid = r.headers.get("x-request-id") ?? r.headers.get("x-fb-request-id") ?? r.headers.get("x-fb-trace-id");
-      log({ event: "meta_probe", status: r.status, request: rid, body: r.ok ? undefined : (await r.text()).slice(0, 200) });
+      log({ event: "meta_probe", via: env.META_BASE_URL ? "proxy" : "direct", status: r.status, request: rid, body: r.ok ? undefined : (await r.text()).slice(0, 200) });
     } catch (err) {
       log({ event: "meta_probe", status: 0, error: String(err).slice(0, 160) });
     }

@@ -26,6 +26,8 @@ export interface MetaClientOptions {
    * (400), which is ours to fix, and never for SAM 3.1, which has no substitute.
    */
   failsafe?: (req: ResponsesRequest, call: CallOptions) => Promise<any>;
+  /** Extra headers on every call (the shared secret of an egress proxy in front of the API). */
+  headers?: Record<string, string>;
 }
 
 /** Request body for POST /v1/responses. `store` is not accepted from callers: it is always false. */
@@ -114,7 +116,7 @@ export function createMetaClient(opts: MetaClientOptions) {
       try {
         res = await doFetch(`${baseUrl}/responses`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${opts.apiKey}`, "Content-Type": "application/json" },
+          headers: { ...opts.headers, Authorization: `Bearer ${opts.apiKey}`, "Content-Type": "application/json" },
           body,
           signal: ctrl.signal,
         });
@@ -211,7 +213,7 @@ export function createMetaClient(opts: MetaClientOptions) {
       try {
         res = await doFetch(`${baseUrl}/asr/transcribe`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${opts.apiKey}` },
+          headers: { ...opts.headers, Authorization: `Bearer ${opts.apiKey}` },
           body: form,
           signal: AbortSignal.timeout(timeoutMs),
         });
