@@ -17,7 +17,7 @@ const SCHEMA = {
       description:
         "share = answers whether Escala should remember only this trip or also learn for next time (or changes that choice); " +
         "confirm = says the itinerary Escala summarized is right; fix = says it is wrong or gives a correction; " +
-        "itinerary = sends flights, a booking or travel plans to add; stop = wants Escala to stop writing; " +
+        "itinerary = sends flights, a booking or travel plans to add; stop = explicitly asks Escala to stop writing or sending messages (asking for help, describing a difficulty or saying they are scared is never stop); " +
         "delete_all = wants Escala to delete everything it keeps about them (not one fact); menu = asks for the options; " +
         "privacy = asks how their data is handled in general; asking what Escala knows or keeps about them (even together with where it is stored) is other, not privacy; other = anything else (questions about the trip, remembering or forgetting one thing, chat)",
     },
@@ -31,6 +31,7 @@ const AWAITING: Record<string, string> = {
   confirm: "Escala showed the itinerary it read and asked whether it is right.",
   fix: "Escala asked what to fix in the itinerary.",
   delete_confirm: "Escala asked the traveler to confirm that everything should be deleted.",
+  stop_confirm: "Escala asked whether the traveler wants it to stop writing (they must say yes or STOP; anything else means no).",
 };
 
 export async function routeMessage(client: MetaClient, text: string, p: Person): Promise<Route> {

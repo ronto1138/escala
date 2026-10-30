@@ -96,6 +96,32 @@ describe("first contact", () => {
     expect(lastText()).toBe(T.en.shareQuestion);
   });
 
+  it("asks before stopping when only the model read a wish to stop (Ives' recording, 30-oct)", async () => {
+    const sim = new SimChannel(() => Date.parse("2026-11-01T15:00:00Z"));
+    const answered: string[] = [];
+    const conv = new Conversation({
+      channel: sim,
+      extractItinerary: async (m) => (m.kind === "text" && /\bZZ\s?\d+/.test(m.text) ? trip : null),
+      agent: async (m) => (answered.push(m.kind === "text" ? m.text : ""), [{ kind: "text", text: "ok" }]),
+      // The misreading: a request for help taken as "stop".
+      route: async (text) => (/\bZZ\s?\d+/.test(text) ? { kind: "itinerary" } : /^yes/i.test(text) ? { kind: "confirm" } : /caminar/.test(text) ? { kind: "stop" } : /^just/.test(text) ? { kind: "share", share: "trip" } : { kind: "other" }),
+    });
+    await sim.userSends("9", { kind: "text", text: "my flights: ZZ 1234 and ZZ 567" });
+    await sim.userSends("9", { kind: "text", text: "yes" });
+    await sim.userSends("9", { kind: "text", text: "just this trip" });
+    const p = conv.people.get("9")!;
+    await sim.userSends("9", { kind: "text", text: "me cuesta caminar, me pueden ayudar?" });
+    expect(p.stage).toBe("ready");
+    expect(p.awaiting).toBe("stop_confirm");
+    await sim.userSends("9", { kind: "text", text: "necesito una silla de ruedas" }); // not a yes: carries on
+    expect(p.stage).toBe("ready");
+    expect(p.awaiting).toBeNull();
+    expect(answered).toContain("necesito una silla de ruedas");
+    await sim.userSends("9", { kind: "text", text: "me cuesta caminar" });
+    await sim.userSends("9", { kind: "text", text: "ALTO" }); // the word itself stops at once
+    expect(p.stage).toBe("stopped");
+  });
+
   it("forgets the last trip's stay, purpose and passes when a new trip is confirmed (Muse Code audit d)", async () => {
     const sim = new SimChannel(() => Date.parse("2026-11-01T15:00:00Z"));
     const conv = new Conversation({

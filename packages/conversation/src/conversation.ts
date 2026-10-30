@@ -4,7 +4,7 @@ import { clearLang, DELETE_ALL_PHRASES, DELETE_WORDS, DEMO_TRIP_ID, DEMO_WORDS, 
 export type Stage = "new" | "onboarding" | "ready" | "stopped";
 export type ShareLevel = "trip" | "profile";
 /** What Escala is waiting for, if anything. People can always say something else instead. */
-export type Awaiting = "share" | "confirm" | "fix" | "delete_confirm" | null;
+export type Awaiting = "share" | "confirm" | "fix" | "delete_confirm" | "stop_confirm" | null;
 export type Intent = "yes" | "no" | "remember" | "trip_only" | "other";
 
 /** One line of the conversation, kept (encrypted) so the next message is read in context. */
@@ -146,6 +146,13 @@ const DELETED: Record<Lang, string> = {
 const SESSION_GAP_MS = 24 * 60 * 60 * 1000;
 const RECENT_TURNS = 12;
 const RECENT_MS = 48 * 60 * 60 * 1000;
+
+/** When the model reads a wish to stop that was not the word itself: stopping is never done on one reading (Ives, 30-oct). */
+const CONFIRM_STOP: Record<Lang, string> = {
+  en: "Do you want me to stop writing to you? Reply STOP to confirm. If not, tell me again what you need and I'll keep helping.",
+  es: "¿Quieres que deje de escribirte? Responde ALTO para confirmar. Si no, cuéntame otra vez qué necesitas y sigo contigo.",
+  fr: "Voulez-vous que j'arrête de vous écrire ? Répondez ARRÊT pour confirmer. Sinon, redites-moi ce dont vous avez besoin et je continue.",
+};
 
 const CONFIRM_DELETE: Record<Lang, string> = {
   en: "Do you want me to delete everything I keep about you? This can't be undone. Reply DELETE to confirm.",
@@ -339,8 +346,16 @@ export class Conversation {
   /** Acts on what the model read. Returns false when the message should go on to the usual path (the agent). */
   private async act(route: Route, m: InboundMessage, text: string, p: Person): Promise<boolean> {
     if (p.awaiting === "delete_confirm" && route.kind !== "delete_all") p.awaiting = null; // they moved on
+    const stopAsked = p.awaiting === "stop_confirm";
+    if (stopAsked && route.kind !== "stop" && route.kind !== "confirm") p.awaiting = null; // not a yes: they moved on
     switch (route.kind) {
       case "stop":
+        // The word itself (STOP, ALTO…) stops at once before reaching here; a model's reading is confirmed first.
+        if (!stopAsked) {
+          p.awaiting = "stop_confirm";
+          await this.say(p, CONFIRM_STOP[p.lang]);
+          return true;
+        }
         p.stage = "stopped";
         p.awaiting = null;
         await this.say(p, T[p.lang].stopped);
@@ -365,6 +380,12 @@ export class Conversation {
         else if (p.trip) await this.afterTrip(p);
         return true;
       case "confirm":
+        if (stopAsked) {
+          p.stage = "stopped";
+          p.awaiting = null;
+          await this.say(p, T[p.lang].stopped);
+          return true;
+        }
         if (!p.pending) return false;
         await this.confirm(p);
         return true;
