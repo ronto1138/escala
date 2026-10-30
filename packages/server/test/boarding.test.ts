@@ -132,7 +132,7 @@ describe("reminder the day before", () => {
     const person = { id: "r", lang, stage: "ready", trip } as unknown as Person;
     const sent: OutboundMessage[] = [];
     const tick = createBoardingReminders({
-      feed: { findByIdent: () => undefined, now: () => Date.parse(nowIso) },
+      feed: { findByIdent: () => undefined, now: () => Date.parse(nowIso) }, realNow: () => Date.parse(nowIso),
       people: () => [person], send: async (_to, m) => void sent.push(...[m].flat()), windowOpen: () => open,
       cityOf: (c, l) => (({ CDG: { en: "Paris CDG", es: "París CDG" }, MEX: { en: "Mexico City", es: "Ciudad de México" } } as any)[c]?.[l]),
     });
@@ -162,9 +162,21 @@ describe("reminder the day before", () => {
     expect(away.sent).toHaveLength(0); // without knowing where they are: the airport's hours, too late to write
     const person = { id: "m", lang: "en", stage: "ready", trip, location: { lat: 19.43, lon: -99.08, at: "2026-11-04T21:00:00Z" } } as unknown as Person;
     const sent: OutboundMessage[] = [];
-    const tick = createBoardingReminders({ feed: { findByIdent: () => undefined, now: () => Date.parse(at) }, people: () => [person], send: async (_t, m) => void sent.push(...[m].flat()), windowOpen: () => true });
+    const tick = createBoardingReminders({ feed: { findByIdent: () => undefined, now: () => Date.parse(at) }, realNow: () => Date.parse(at), people: () => [person], send: async (_t, m) => void sent.push(...[m].flat()), windowOpen: () => true });
     await tick();
     expect(sent).toHaveLength(1);
+  });
+
+  it("uses real time for a flight that is not the demo's, whatever the demo clock says (30-oct)", async () => {
+    const person = { id: "z", lang: "en", stage: "ready", trip } as unknown as Person;
+    const sent: OutboundMessage[] = [];
+    // The demo clock stopped days earlier; the real clock is the day before the flight, 17:00 in Paris.
+    const tick = createBoardingReminders({
+      feed: { findByIdent: () => undefined, now: () => Date.parse("2026-10-20T03:00:00Z") }, realNow: () => Date.parse("2026-11-04T16:00:00Z"),
+      people: () => [person], send: async (_t, m) => void sent.push(...[m].flat()), windowOpen: () => true,
+    });
+    await tick();
+    expect(sent.filter((m) => m.kind === "text" && m.text.includes("tomorrow"))).toHaveLength(1);
   });
 
   it("says nothing on the day of the flight", async () => {

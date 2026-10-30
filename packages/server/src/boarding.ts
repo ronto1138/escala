@@ -8,6 +8,8 @@ export { BOARDING, remindAt, ruleFor, type BoardingRule } from "@escala/feeds";
 
 export interface BoardingDeps {
   feed: Pick<FlightFeed, "findByIdent"> & { now?(): number };
+  /** The real clock, for flights that are not the demo's (the feed's clock is the demo story's). Defaults to Date.now. */
+  realNow?(): number;
   people(): Iterable<Person>;
   /** One message, or a group that goes out together (a 🔊 line and its voice note). */
   send(to: ParticipantId, m: OutboundMessage | OutboundMessage[]): Promise<unknown>;
@@ -177,22 +179,25 @@ export function createBoardingReminders(deps: BoardingDeps) {
       // From the itinerary's own times, so it also reaches flights Escala cannot follow; with the approved template when
       // the 24-hour window is closed. The flight's own time is said in its airport's local time, and says so.
       const trip = p.trip as Trip | undefined;
-      const here = whereNow(trip, now, p.location as Parameters<typeof whereNow>[2]);
       for (const j of trip ? journeys(trip) : []) {
         const l = j[0]!;
         const tz = AIRPORTS[l.from]?.tz;
         if (!tz) continue;
-        const theirTz = here?.tz ?? tz;
         const found = deps.feed.findByIdent(l.flight);
         const snap = found && found.origin.iata === l.from && found.destination.iata === l.to ? found : undefined;
+        // Real time, except for the demo's own flights, which live on the story's clock (30-oct: in production the
+        // demo clock had stopped, so a real flight tomorrow never looked like "tomorrow").
+        const clockNow = snap ? now : (deps.realNow?.() ?? Date.now());
+        const here = whereNow(trip, clockNow, p.location as Parameters<typeof whereNow>[2]);
+        const theirTz = here?.tz ?? tz;
         const sameDay = snap?.departure.scheduled && new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(snap.departure.scheduled)) === l.date;
         const leaves = sameDay ? Date.parse(snap!.departure.estimated ?? snap!.departure.scheduled!) : legInstant(l.date, l.dep_local, l.from);
-        if (!Number.isFinite(leaves) || now >= leaves) continue;
+        if (!Number.isFinite(leaves) || clockNow >= leaves) continue;
         const key = `${p.id}|${norm(l.flight)}|${l.date}|daybefore`;
         if (told.has(key)) continue;
-        const today = new Intl.DateTimeFormat("en-CA", { timeZone: theirTz }).format(new Date(now));
+        const today = new Intl.DateTimeFormat("en-CA", { timeZone: theirTz }).format(new Date(clockNow));
         const tomorrow = new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
-        const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: theirTz, hour: "2-digit", hourCycle: "h23" }).format(new Date(now)));
+        const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: theirTz, hour: "2-digit", hourCycle: "h23" }).format(new Date(clockNow)));
         if (l.date !== tomorrow || hour < 9 || hour >= 22) continue;
         const time = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(leaves));
         const r = { flight: pretty(norm(l.flight)), to: deps.cityOf?.(l.to, p.lang) || l.to, from: deps.cityOf?.(l.from, p.lang) || l.from, date: dayName(l.date, p.lang), time, simulated: Boolean(sameDay && snap?.source === "replay") };
