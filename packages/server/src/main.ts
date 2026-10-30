@@ -276,6 +276,34 @@ const boarding = createBoardingReminders({
 });
 setInterval(() => void boarding().catch((err) => log({ event: "error", why: "boarding", error: String(err).slice(0, 120) })), 15_000).unref();
 
+// Where this server's requests leave from, and whether Meta answers from here (30-oct: from us-west2 Meta answered
+// model_not_found while the same key worked from Mexico; Meta's support pointed at region denials by origin country).
+void (async () => {
+  try {
+    const r = await fetch("https://ipinfo.io/json", { signal: AbortSignal.timeout(10_000) });
+    const g = (await r.json()) as { ip?: string; country?: string; region?: string; city?: string; org?: string };
+    log({ event: "egress", ip: g.ip, country: g.country, region: g.region, city: g.city, org: g.org });
+  } catch (err) {
+    log({ event: "egress_failed", error: String(err).slice(0, 120) });
+  }
+  // Straight to Meta, not through the failsafe, three times a few seconds apart: the status as Meta gave it.
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch("https://api.meta.ai/v1/responses", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${need("META_API_KEY")}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "muse-spark-1.3", input: "ok", max_output_tokens: 16, reasoning: { effort: "low" }, store: false }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      const rid = r.headers.get("x-request-id") ?? r.headers.get("x-fb-request-id") ?? r.headers.get("x-fb-trace-id");
+      log({ event: "meta_probe", status: r.status, request: rid, body: r.ok ? undefined : (await r.text()).slice(0, 200) });
+    } catch (err) {
+      log({ event: "meta_probe", status: 0, error: String(err).slice(0, 160) });
+    }
+    await new Promise((r) => setTimeout(r, 5_000));
+  }
+})();
+
 const handler = createWebhookHandler({ verifyToken: need("WHATSAPP_VERIFY_TOKEN"), appSecret: env.WHATSAPP_APP_SECRET, deliver, log });
 const host = env.HOST ?? "127.0.0.1";
 const port = Number(env.PORT ?? 8080);

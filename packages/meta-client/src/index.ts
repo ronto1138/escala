@@ -157,7 +157,9 @@ export function createMetaClient(opts: MetaClientOptions) {
       }
 
       const text = await res.text();
-      lastError = `HTTP ${res.status}: ${text.slice(0, 300)}`;
+      // Meta's support asks for request ids with each failure (30-oct): kept with the error, never the key.
+      const rid = res.headers.get("x-request-id") ?? res.headers.get("x-fb-request-id") ?? res.headers.get("x-fb-trace-id");
+      lastError = `HTTP ${res.status}${rid ? ` [request ${rid}]` : ""}: ${text.slice(0, 300)}`;
       // Meta answers a working model with "model_not_found" now and then (30-oct: 2 in 6 calls a minute apart): retried
       // like a busy server before giving the model up for another.
       const flaky = res.status === 404 && /model_not_found/.test(text);
