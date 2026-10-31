@@ -17,6 +17,14 @@ describe("journeys and facts", () => {
     expect(journeys(demo).map((j) => j.map((l) => l.flight))).toEqual([["ZZ1234", "ZZ567"], ["ZZ568", "ZZ1251"]]);
   });
 
+  it("keeps an overnight flight and its morning connection in one journey (battery 30-oct: the demo trip at night)", () => {
+    const night: Trip = { bookingRef: null, legs: [
+      { flight: "ZZ1234", date: "2026-10-30", from: "MEX", to: "ORD", dep_local: "21:50", arr_local: "03:05" },
+      { flight: "ZZ567", date: "2026-10-31", from: "ORD", to: "YUL", dep_local: "05:35", arr_local: "08:50" },
+    ] };
+    expect(journeys(night).map((j) => j.map((l) => l.flight))).toEqual([["ZZ1234", "ZZ567"]]);
+  });
+
   it("derives the demo facts from the itinerary, not from guesses", () => {
     expect(factsFor(demo, "ZZ1234")).toMatchObject({
       origin_country: "US",

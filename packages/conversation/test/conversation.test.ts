@@ -60,6 +60,11 @@ describe("reading short answers in words", () => {
     expect(detectLang("Hola, ¿me ayudas con mi viaje?")).toBe("es");
     expect(detectLang("Bonjour, c'est pour mon voyage")).toBe("fr");
     expect(detectLang("hey")).toBe("en");
+    // Battery 30-oct: short greetings got the English introduction.
+    expect(detectLang("buenas")).toBe("es");
+    expect(detectLang("Buenas tardes")).toBe("es");
+    expect(detectLang("Salut")).toBe("fr");
+    expect(detectLang("bonsoir")).toBe("fr");
   });
 });
 

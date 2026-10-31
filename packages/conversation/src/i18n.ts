@@ -25,9 +25,9 @@ export const DELETE_ALL_PHRASES = [
 ];
 
 /** First-message language guess. The person can always switch; this only picks the greeting. */
-const EN_WORDS = ["hi", "hello", "the", "my", "flight", "what", "is", "are", "i", "i'm", "you", "and", "thanks", "yes", "can", "do", "how", "of", "with", "will", "late"];
-const ES_WORDS = ["hola", "mi", "vuelo", "qué", "gracias", "viaje", "está", "sí", "el", "la", "los", "las", "por", "para", "que", "es", "y", "tengo", "puedes"];
-const FR_WORDS = ["bonjour", "mon", "vol", "merci", "est-ce", "voyage", "je", "à", "oui", "le", "les", "c'est", "vous", "pour", "et", "est", "j'ai", "pouvez-vous"];
+const EN_WORDS = ["hi", "hello", "hey", "hiya", "morning", "evening", "afternoon", "the", "my", "flight", "what", "is", "are", "i", "i'm", "you", "and", "thanks", "yes", "can", "do", "how", "of", "with", "will", "late"];
+const ES_WORDS = ["hola", "buenas", "buenos", "buen", "días", "dias", "tardes", "noches", "saludos", "oye", "mi", "vuelo", "qué", "gracias", "viaje", "está", "sí", "el", "la", "los", "las", "por", "para", "que", "es", "y", "tengo", "puedes"];
+const FR_WORDS = ["bonjour", "salut", "bonsoir", "coucou", "allô", "mon", "vol", "merci", "est-ce", "voyage", "je", "à", "oui", "le", "les", "c'est", "vous", "pour", "et", "est", "j'ai", "pouvez-vous"];
 
 /** Words as typed, plus the same word without stretched letters ("holaa", "graciasss") when the typed one is unknown. */
 function tokensOf(lower: string): Set<string> {

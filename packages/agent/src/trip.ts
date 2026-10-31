@@ -106,7 +106,9 @@ export function journeys(trip: Trip): Leg[][] {
   const out: Leg[][] = [];
   for (const leg of trip.legs) {
     const last = out.at(-1)?.at(-1);
-    const gapH = last ? (Date.parse(`${leg.date}T${leg.dep_local}`) - Date.parse(`${last.date}T${last.arr_local}`)) / 3.6e6 : Infinity;
+    // An overnight flight lands the next day (arrival earlier than departure); an unknown arrival counts from departure.
+    const lands = last ? Date.parse(`${last.date}T${last.arr_local || last.dep_local}`) + (last.arr_local && last.arr_local < last.dep_local ? 864e5 : 0) : NaN;
+    const gapH = last ? (Date.parse(`${leg.date}T${leg.dep_local}`) - lands) / 3.6e6 : Infinity;
     if (last && last.to === leg.from && gapH < 24) out.at(-1)!.push(leg);
     else out.push([leg]);
   }

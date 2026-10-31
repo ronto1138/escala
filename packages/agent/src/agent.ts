@@ -452,6 +452,9 @@ export function longestDeadlineDays(entries: RightEntry[]): number {
 }
 
 /** Builds the pieces the Conversation needs: itinerary extraction and the trip agent. */
+/** Country calling code → a time zone of that country, for a traveler with no trip yet (only the calendar day is used). */
+const PHONE_TZ: Array<[string, string]> = [["52", "America/Mexico_City"], ["33", "Europe/Paris"], ["34", "Europe/Madrid"], ["44", "Europe/London"], ["1", "America/New_York"]];
+
 export function createEscalaAgent(
   deps: AgentDeps,
 ): Pick<ConversationDeps, "extractItinerary" | "agent" | "crossesBorder" | "briefDocuments" | "rememberedPassport" | "whoSpeaks"> & { reset(personId: string): void; sweep(now?: number): void } {
@@ -491,6 +494,14 @@ export function createEscalaAgent(
   // A trip on the demo's simulated flights lives on the story's clock (it runs faster than life); any other, on the real one.
   const storyNow = (trip: Trip | undefined, p?: Person) =>
     deps.feed.now && trip?.legs.some((l) => flightFor(trip, l.flight)) ? deps.feed.now() : Date.parse(p ? turn(p).at : "") || Date.now();
+
+  // The traveler's own calendar day for a moment: where the trip puts them, else a guess from their phone's country
+  // code (battery 30-oct: in the Americas' evening, "you told me on Oct 31" was the UTC date).
+  const localDay = (iso: string, p: Person, trip: Trip | undefined): string => {
+    const tz = whereNow(trip, storyNow(trip, p), p.location, liveTimesFor(trip))?.tz ?? PHONE_TZ.find(([code]) => p.id.startsWith(code))?.[1];
+    const at = Date.parse(iso);
+    return tz && Number.isFinite(at) ? new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(at)) : iso.slice(0, 10);
+  };
 
   async function extractItinerary(m: InboundMessage, p: Person, correction?: string): Promise<ExtractedTrip | null> {
     const current = (p.pending?.trip ?? p.trip) as Trip | undefined;
@@ -683,7 +694,7 @@ export function createEscalaAgent(
     const memoryText = learned.length
       ? ` What you have learned about this traveler (when you use one, say in ${LANG_NAME[p.lang]} when the traveler told you, e.g. "in March you…"; never copy the brackets or the source notes): ${learned
           .slice(0, 20)
-          .map((f) => `[${f.topic}] ${f.statement} (told on ${f.source.at.slice(0, 10)})`)
+          .map((f) => `[${f.topic}] ${f.statement} (told on ${localDay(f.source.at, p, trip)})`)
           .join("; ")}.`
       : "";
     // Only figures the traveler said themselves (the quote), not ones a model wrote into a statement.
@@ -742,7 +753,7 @@ export function createEscalaAgent(
       ((here) =>
         here
           ? ` Right now it is ${localClock(storyNow(trip, p), here.tz)} in ${here.city}, where the traveler most likely is (${here.why}). Give every time as a clock time, local at its airport, and say which city when it could be confused.`
-          : "")(whereNow(trip, storyNow(trip, p), p.location, liveTimesFor(trip))) +
+          : ` Today is ${localDay(turn(p).at || new Date().toISOString(), p, trip)} for the traveler.`)(whereNow(trip, storyNow(trip, p), p.location, liveTimesFor(trip))) +
       " When you call search_travel_info, also write one short line telling the traveler you are looking it up, in your own words and about what they asked, different every time; no figures or questions in it.";
 
     const input: any[] = [...earlier.map((t) => ({ role: t.role, content: t.content })), { role: "user", content: question }];
@@ -830,7 +841,7 @@ export function createEscalaAgent(
       const query = String(args.query ?? "").slice(0, 300);
       if (RIGHTS_TOPIC.test(query)) return { error: "rights and compensation come only from rights_for_trip" };
       const profile = deps.memory && p.share === "profile" ? deps.memory.recall(p.id, { scope: "profile" }).slice(0, 10).map((f) => f.statement) : [];
-      const today = (currentMessage.at || new Date().toISOString()).slice(0, 10);
+      const today = localDay(currentMessage.at || new Date().toISOString(), p, trip);
       const now = Date.parse(currentMessage.at) || Date.now();
       const here = locationIsFresh(p.location, now) ? `the traveler is at ${describeLocation(p.location, trip, now)}` : null;
       const named = typeof args.place === "string" && args.place !== "null" ? args.place : null;
@@ -987,7 +998,7 @@ export function createEscalaAgent(
           place: city,
           lang: p.lang,
           profile: [],
-          today: (currentMessage.at || new Date().toISOString()).slice(0, 10),
+          today: localDay(currentMessage.at || new Date().toISOString(), p, trip),
         });
         return {
           saved: d,
@@ -1112,7 +1123,7 @@ export function createEscalaAgent(
         });
         return { remembered: f.id, scope: f.scope };
       } catch (err) {
-        if (err instanceof ConsentError) return { not_remembered: "the traveler has not turned on memory for future trips; keep it for this trip only" };
+        if (err instanceof ConsentError) return { not_remembered: "the traveler has not turned on memory for future trips; keep it for this trip only. If they want it, they only have to say so in this chat (there is no app or setting to open)" };
         throw err;
       }
     }
@@ -1139,7 +1150,7 @@ export function createEscalaAgent(
             ? "encrypted on Escala's server; what was learned stays for next trips until they ask to forget it; they can see or delete anything anytime"
             : "encrypted on Escala's server; deleted when the trip and any claim deadlines are over; they can see or delete it anytime",
         this_trip: thisTrip,
-        remembered: facts.map((f) => ({ id: f.id, scope: f.scope, statement: f.statement, from: `${f.source.kind}, ${f.source.at.slice(0, 10)}`, quote: f.source.quote ?? null })),
+        remembered: facts.map((f) => ({ id: f.id, scope: f.scope, statement: f.statement, from: `${f.source.kind}, ${localDay(f.source.at, p, trip)}`, quote: f.source.quote ?? null })),
       };
     }
     if (name === "forget") {
@@ -1177,7 +1188,7 @@ export function createEscalaAgent(
         .filter((e: any) => typeof e?.amount === "number" && typeof e?.currency === "string" && typeof e?.what === "string" && theirs.includes(e.amount))
         .map((e: any) => ({ what: scrub(e.what), amount: e.amount, currency: e.currency.toUpperCase().slice(0, 3) }));
       const lang = (["en", "es", "fr"] as const).includes(args.letter_lang) ? (args.letter_lang as Lang) : "en";
-      const today = (currentMessage.at || new Date().toISOString()).slice(0, 10);
+      const today = localDay(currentMessage.at || new Date().toISOString(), p, trip);
       // Days ago is counted here, not by the model: a wrong date would move the deadline.
       const ago = Number.isInteger(args.bag_delivered_days_ago) && args.bag_delivered_days_ago >= 0 && args.bag_delivered_days_ago < 400 ? args.bag_delivered_days_ago : null;
       const deliveredOn = ago !== null ? new Date(Date.parse(`${today}T12:00:00Z`) - ago * 86_400_000).toISOString().slice(0, 10) : given(args.bag_delivered_on);
