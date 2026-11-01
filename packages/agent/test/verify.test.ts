@@ -31,6 +31,11 @@ describe("number formats in three languages", () => {
   it("does not read flight numbers or clock times as claims", () => {
     expect(extractClaims("ZZ 567 leaves at 10:30 from gate K14")).toEqual([]);
   });
+
+  it("battery (Oct 31): French clock times are not durations; a French duration still is", () => {
+    expect(extractClaims("ZZ 567 part à 06 h 50 heure de Chicago, arrivée 10\u00a0h\u00a005")).toEqual([]);
+    expect(extractClaims("un retard de 3 h 30").length).toBeGreaterThan(0);
+  });
 });
 
 describe("the demo moment: the model offers 600 euros", () => {

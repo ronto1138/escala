@@ -250,6 +250,16 @@ describe("Muse Code audit (Oct 26): privacy promises are kept", () => {
     expect(erased).toEqual(["9"]);
   });
 
+  it("battery (Oct 31): 'delete everything' is confirmed in the language of that message", async () => {
+    const sim = new SimChannel();
+    const conv = new Conversation({ channel: sim, extractItinerary: async () => null, agent: async () => [], onDelete: async () => {} });
+    await sim.userSends("31", { kind: "text", text: "Hi" });
+    conv.people.get("31")!.lang = "en";
+    await sim.userSends("31", { kind: "text", text: "ya no quiero que guardes nada de mí, bórralo todo" });
+    expect(conv.people.has("31")).toBe(false);
+    expect((sim.transcript.at(-1)!.message as { text: string }).text).toMatch(/Borré todo/);
+  });
+
   it("battery (Oct 26): English with 'me' is not read as Spanish", () => {
     expect(detectLang("ZX denied me boarding in Calgary. What do they owe me and when?")).toBe("en");
     expect(detectLang("Can you help me with my trip?")).toBe("en");

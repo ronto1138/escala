@@ -30,19 +30,28 @@ export interface EvidenceReading {
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["object", "description", "visible_damage", "new_damage", "tag_number"],
+  // The description comes first: an object named after describing it is named right more often (a suitcase read as a car, 31-oct).
+  required: ["description", "object", "visible_damage", "new_damage", "tag_number"],
   properties: {
+    description: { type: "string", description: "One sentence: color, type, material and distinguishing marks. Only what is visible." },
     object: {
       type: "string",
       enum: ["bag", "bag_tag", "car", "boarding_pass", "other"],
       description: "bag = suitcase or checked bag; bag_tag = the airline's bag tag or its receipt sticker; car = a vehicle; boarding_pass = a boarding pass (paper or on a screen)",
     },
     tag_number: { type: "string", description: "Only for bag_tag: the bag tag number printed on it (letters and digits, e.g. ZZ123456); empty otherwise" },
-    description: { type: "string", description: "One sentence: color, type, material and distinguishing marks. Only what is visible." },
     visible_damage: { type: "array", items: { type: "string" }, description: "Each visible damage, short, with where it is" },
     new_damage: { type: "array", items: { type: "string" }, description: "Damage not present in the earlier description; empty if there is none or no earlier description" },
   },
 } as const;
+
+/** Whole sentences up to max characters; a single long sentence is cut at a word. */
+export function sentences(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max);
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("; "));
+  return end > 0 ? cut.slice(0, end + 1) : cut.slice(0, cut.lastIndexOf(" ")) + "…";
+}
 
 const LANG_NAME: Record<Lang, string> = { en: "English", es: "Spanish (Mexico)", fr: "French" };
 const MARK_CONCEPTS = ["scratch", "dent"];
@@ -76,7 +85,7 @@ export async function readEvidence(
   const reading: EvidenceReading = {
     object: j.object,
     ...(j.object === "bag_tag" && tag ? { tagNumber: tag } : {}),
-    description: scrub(String(j.description ?? "")).slice(0, 300),
+    description: sentences(scrub(String(j.description ?? "")), 300),
     visibleDamage: (j.visible_damage ?? []).slice(0, 10).map((x: unknown) => scrub(String(x)).slice(0, 160)),
     marks: {},
     photoSha256,

@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { evidenceReply } from "../src/index.ts";
+import { sentences } from "../src/evidence.ts";
+
+describe("battery (Oct 31): a long description is cut at a sentence", () => {
+  it("keeps whole sentences and never ends mid-word", () => {
+    expect(sentences("Una maleta verde. Tiene cuatro ruedas y una cinta roja atada al cierre. Se observa", 60)).toBe("Una maleta verde.");
+    expect(sentences("palabra ".repeat(50).trim(), 30)).toMatch(/^(palabra ?)+…$/);
+    expect(sentences("corta", 300)).toBe("corta");
+  });
+});
 
 const reading = {
   object: "bag" as const,

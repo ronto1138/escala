@@ -233,7 +233,7 @@ export class Conversation {
       DELETE_ALL_PHRASES.some((w) => word.includes(w)) ||
       (words(text).length <= 3 && DELETE_WORDS.some((w) => (w.includes(" ") ? word.includes(w) : tokens.has(w))));
     if (deleteAll || (p?.awaiting === "delete_confirm" && words(text).length <= 3 && DELETE_WORDS.some((w) => tokens.has(w)))) {
-      return this.erase(m.from, p?.lang ?? detectLang(text));
+      return this.erase(m.from, (text && clearLang(text)) || p?.lang || detectLang(text)); // the language of this message, if it is clear
     }
 
     if (STOP_WORDS.includes(word) || (words(text).length <= 3 && STOP_WORDS.some((w) => tokens.has(w)))) {

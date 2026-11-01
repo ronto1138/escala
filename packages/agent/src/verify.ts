@@ -68,7 +68,8 @@ export function parseNumber(raw: string): number {
 
 export function extractClaims(raw: string): Claim[] {
   // A clock time is not a duration: "13:50 hora de Chicago" must not read as "50 horas". Same length, so positions hold.
-  const text = raw.replace(/\b(\d{1,2}):(\d{2})\b/g, (m) => "#".repeat(m.length));
+  // French writes them "06 h 50" (two-digit hour, as Escala prints them); a duration like "3 h 30" keeps its check.
+  const text = raw.replace(/\b(\d{1,2}):(\d{2})\b|\b\d{2}[ \u00a0\u202f]?h[ \u00a0\u202f]?\d{2}\b/g, (m) => "#".repeat(m.length));
   const claims: Claim[] = [];
   const seen = new Set<string>();
   const push = (c: Claim, start: number) => {
