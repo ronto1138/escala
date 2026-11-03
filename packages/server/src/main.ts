@@ -87,6 +87,10 @@ const feed = new ReplayClock(demoScenario, {
 // The demo trip (D48): the scenario's two connecting flights, dated so the story starts when the person asks for it.
 const DEMO_FLIGHTS = ["ZZ1234", "ZZ567"];
 const demoStartedAt = new Map<string, number>();
+// The story playing now (one for the whole server): its minute 0, and when it began. Someone who asks for the demo
+// within two minutes of another joins that story instead of restarting it under them (audit 31-oct).
+let story: { startAt: number; at: number } | undefined;
+const JOIN_MS = 120_000;
 
 // The immigration card read aloud, on this server (Kokoro, in the image under /opt/tts). Off when the models are absent.
 const speak = existsSync(`${env.TTS_MODELS ?? "/opt/tts"}/kokoro-v1.0.int8.onnx`) ? createSpeech({ models: env.TTS_MODELS ?? "/opt/tts", log }) : undefined;
@@ -146,7 +150,8 @@ const conversation = new Conversation({
   },
   onShareChanged: async (p) => void memory.updateSettings(p.id, { share: p.share }),
   demoTrip: (p) => {
-    const startAt = Math.ceil(Date.now() / 300_000) * 300_000; // on the next five minutes: times read like a real schedule
+    const joining = story && feed.running && Date.now() - story.at < JOIN_MS;
+    const startAt = joining ? story!.startAt : Math.ceil(Date.now() / 300_000) * 300_000; // on the next five minutes: times read like a real schedule
     demoStartedAt.set(p.id, startAt);
     if (demoStartedAt.size > 1000) demoStartedAt.delete(demoStartedAt.keys().next().value!);
     const legs = scenarioLegs(demoScenario, DEMO_FLIGHTS, startAt);
@@ -162,9 +167,16 @@ const conversation = new Conversation({
       return Boolean(s && s.origin.iata === l.from && s.destination.iata === l.to);
     });
     if (watching) {
-      feed.restart(demoStartedAt.get(p.id));
+      const startAt = demoStartedAt.get(p.id);
       demoStartedAt.delete(p.id);
-      log({ event: "demo_replay", from: tag(p.id) });
+      // Same minute 0 as the story playing: they share it. Otherwise it starts again; travelers on an earlier story
+      // no longer match its flights (isLeg checks the scheduled time) and get no one else's times.
+      const joined = Boolean(story && feed.running && startAt === story.startAt);
+      if (!joined) {
+        feed.restart(startAt);
+        story = startAt === undefined ? undefined : { startAt, at: Date.now() };
+      }
+      log({ event: "demo_replay", from: tag(p.id), joined });
     }
     return { watching };
   },

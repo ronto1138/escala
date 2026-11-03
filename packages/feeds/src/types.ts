@@ -1,4 +1,4 @@
-/** The provider-neutral view of a flight that the rest of PortulAIn uses. Times are ISO 8601 UTC. */
+/** The provider-neutral view of a flight that the rest of Escala uses. Times are ISO 8601 UTC. */
 export interface FlightSnapshot {
   source: "replay" | "aeroapi";
   ident: string; // e.g. "ZZ1234"
@@ -31,7 +31,7 @@ export interface Times {
   actual: string | null;
 }
 
-/** Subset of the AeroAPI v4 flight object (GET /flights/{ident}) that PortulAIn reads. */
+/** Subset of the AeroAPI v4 flight object (GET /flights/{ident}) that Escala reads. */
 export interface AeroFlight {
   ident: string;
   ident_iata?: string | null;
@@ -67,7 +67,7 @@ export interface AeroAirport {
 }
 
 /**
- * A change worth telling the traveler about. `inference: true` means PortulAIn deduced it from the data;
+ * A change worth telling the traveler about. `inference: true` means Escala deduced it from the data;
  * the airline has not said it. Messages must label it as such.
  */
 export type FlightEvent =

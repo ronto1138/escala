@@ -38,6 +38,8 @@ export interface ExtractedTrip {
 
 export interface Person {
   id: ParticipantId;
+  /** They said they are under 18: Escala is for adults (Muse Spark Open's acceptable use), so no trip is taken. */
+  minor?: boolean;
   lang: Lang;
   stage: Stage;
   share: ShareLevel;
@@ -227,13 +229,19 @@ export class Conversation {
   }
 
   private async process(m: InboundMessage, text: string, word: string, at: number, p: Person | undefined, demoTap = false): Promise<void> {
+    if (p && text && saysMinor(text)) p.minor = true;
     const tokens = new Set(word.split(/[^\p{L}'-]+/u).filter(Boolean));
 
-    const deleteAll =
-      DELETE_ALL_PHRASES.some((w) => word.includes(w)) ||
-      (words(text).length <= 3 && DELETE_WORDS.some((w) => (w.includes(" ") ? word.includes(w) : tokens.has(w))));
-    if (deleteAll || (p?.awaiting === "delete_confirm" && words(text).length <= 3 && DELETE_WORDS.some((w) => tokens.has(w)))) {
+    // The word alone ("BORRAR") or an explicit "delete everything" erases at once; a short message with a delete word
+    // and something else ("delete the note") may be about one thing, so it is asked first (audit 31-oct).
+    const deleteAll = DELETE_ALL_PHRASES.some((w) => word.includes(w)) || DELETE_WORDS.includes(word);
+    const shortDelete = words(text).length <= 3 && DELETE_WORDS.some((w) => (w.includes(" ") ? word.includes(w) : tokens.has(w)));
+    if (deleteAll || (p?.awaiting === "delete_confirm" && shortDelete)) {
       return this.erase(m.from, (text && clearLang(text)) || p?.lang || detectLang(text)); // the language of this message, if it is clear
+    }
+    if (shortDelete && p) {
+      p.awaiting = "delete_confirm";
+      return this.say(p, CONFIRM_DELETE[p.lang]);
     }
 
     if (STOP_WORDS.includes(word) || (words(text).length <= 3 && STOP_WORDS.some((w) => tokens.has(w)))) {
@@ -249,6 +257,7 @@ export class Conversation {
       p = this.newPerson(m.from, sure ?? "en");
       p.langFromText = sure !== null;
       p.stage = "onboarding";
+      if (text && saysMinor(text)) p.minor = true;
       p.lastSeen = at;
       if (m.profileName) p.name = m.profileName;
       await this.say(p, T[p.lang].hello);
@@ -281,6 +290,7 @@ export class Conversation {
     // The demo trip, by its button or by asking for it in so many words: shown like any itinerary, to confirm.
     const tokensDemo = new Set(fold(word).split(/[^\p{L}'-]+/u).filter(Boolean));
     const askedDemo = DEMO_WORDS.includes(word) || (words(text).length <= 5 && (tokensDemo.has("demo") || tokensDemo.has("demostracion")));
+    if (this.deps.demoTrip && (demoTap || askedDemo) && p.minor) return this.say(p, T[p.lang].minor);
     if (this.deps.demoTrip && (demoTap || askedDemo)) {
       const demo = this.deps.demoTrip(p);
       if (demo) {
@@ -476,6 +486,10 @@ export class Conversation {
   }
 
   private async readItinerary(m: InboundMessage, p: Person, correction?: string): Promise<boolean> {
+    if (p.minor) {
+      await this.say(p, T[p.lang].minor);
+      return true;
+    }
     let got: ExtractedTrip | null;
     try {
       got = await this.deps.extractItinerary(m, p, correction);
@@ -485,6 +499,9 @@ export class Conversation {
       return true;
     }
     if (!got || got.lines.length === 0) return false;
+    // The same flights they already have ("change of plans: no train, one more day in New York") is not a new trip:
+    // the agent records the change (battery 31-oct).
+    if (!correction && p.trip && sameLegs(got.trip, p.trip)) return false;
     p.pending = got;
     p.awaiting = "confirm";
     await this.say(p, T[p.lang].itinerarySummary(got.lines));
@@ -586,4 +603,24 @@ function normalize(s: string) {
 
 function words(s: string) {
   return normalize(s).split(" ").filter(Boolean);
+}
+
+/** Someone saying they are under 18 about themselves ("I'm 15", "tengo 15 años", "j'ai 15 ans"); a parent writing about a child is not. */
+export function saysMinor(text: string): boolean {
+  return (
+    /\b(?:i'?m|i am)\s+(1[0-7]|[1-9])(?:\s*(?:years?\s*old|y\/?o)\b|(?=\s*(?:and\b|,|\.|!|$)))/i.test(text) ||
+    /\btengo\s+(1[0-7]|[1-9])\s+a[ñn]os\b/i.test(text) ||
+    /\bj'ai\s+(1[0-7]|[1-9])\s+ans\b/i.test(text) ||
+    /\b(i'?m a minor|soy menor de edad|je suis mineur\w*)\b/i.test(text)
+  );
+}
+
+/** The same flights, by number, date and route. */
+function sameLegs(a: unknown, b: unknown): boolean {
+  const key = (t: unknown) => {
+    const legs = (t as { legs?: unknown })?.legs;
+    if (!Array.isArray(legs)) return "[]";
+    return JSON.stringify(legs.map((l: { flight?: string; date?: string; from?: string; to?: string }) => `${String(l?.flight ?? "").replace(/\s+/g, "").toUpperCase()}|${l?.date}|${l?.from}|${l?.to}`).sort());
+  };
+  return key(a) === key(b) && key(a) !== "[]";
 }

@@ -57,7 +57,7 @@ const LANG_NAME: Record<Lang, string> = { en: "English", es: "Spanish (Mexico)",
  * Sensitive or risky content that is never kept, whatever the model says: health, religion, politics, sexuality,
  * money and payment details, identity documents, and anything that reads like a claim about rights or amounts.
  */
-const SENSITIVE =
+export const SENSITIVE =
   /\b(diab\w*|asthm\w*|asma|pregnan\w*|embaraz\w*|enceinte|disab\w*|discapacid\w*|handicap\w*|wheelchair|silla de ruedas|fauteuil|medic\w*|m[ée]dica\w*|enferm\w*|malad\w*|illness|sick|allerg\w*|alerg\w*|religi\w*|church|iglesia|[ée]glise|muslim|musulm\w*|jew\w*|jud[íi]\w*|juif|christian|cristian\w*|catholic|cat[óo]lic\w*|halal|kosher|casher|politic\w*|pol[íi]tic\w*|gay|lesbian\w*|sexual\w*|card|tarjeta|carte|cvv|pin|bank|banco|banque|account number|passport|pasaporte|passeport|visa number|ssn|social security|owed|compensation|compensaci[óo]n|indemni\w*|refund|reembolso|rembours\w*|€|\$|eur|usd|cad)\b/i;
 
 const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();

@@ -3,5 +3,6 @@ export { arrivalMinutesLate, fromAeroFlight } from "./normalize.ts";
 export { detect, inboundChain, inboundDelayMinutes, inboundInference, type DetectorOptions } from "./detector.ts";
 export { loadScenario, ReplayFeed, type FlightFeed, type Scenario } from "./replay.ts";
 export { ReplayClock, scenarioLegs, shiftScenario, type ReplayClockOptions } from "./clock.ts";
+export { isLeg, type LegRef } from "./match.ts";
 export { DEFAULT_TURN, turnTime, type TurnTime } from "./turnaround.ts";
 export { BOARDING, international, remindAt, ruleFor, TYPICAL_BOARDING, type BoardingRule } from "./boarding.ts";

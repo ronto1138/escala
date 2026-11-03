@@ -1,6 +1,7 @@
 export {
   Conversation,
   keywordIntent,
+  saysMinor,
   type Awaiting,
   type ConversationDeps,
   type ExtractedTrip,

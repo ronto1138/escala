@@ -1,7 +1,7 @@
 import type { OutboundMessage, ParticipantId } from "@escala/channel";
 import type { Lang, Person } from "@escala/conversation";
 import { AIRPORTS, immigrationStops, immigrationText, journeys, legInstant, whereNow, type Purpose, type Trip } from "@escala/agent";
-import { international, ruleFor, remindAt, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
+import { international, isLeg, ruleFor, remindAt, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot, type LegRef } from "@escala/feeds";
 import { TEMPLATE, TEMPLATE_LANG } from "./notifier.ts";
 
 export { BOARDING, remindAt, ruleFor, type BoardingRule } from "@escala/feeds";
@@ -208,9 +208,9 @@ export function createBoardingReminders(deps: BoardingDeps) {
       }
 
       // Only a followed flight on the same route: another trip's ZZ 1234 from another city is not this one.
-      const legs = ((p.trip as { legs?: Array<{ flight: string; from: string; to: string }> } | undefined)?.legs ?? []).map((l) => {
+      const legs = ((p.trip as { legs?: LegRef[] } | undefined)?.legs ?? []).map((l) => {
         const s = deps.feed.findByIdent(l.flight);
-        return s && (!l.from || s.origin.iata === l.from) && (!l.to || s.destination.iata === l.to) ? s : undefined;
+        return s && isLeg(s, l) ? s : undefined;
       });
       const open = deps.windowOpen(p.id);
 
@@ -218,7 +218,7 @@ export function createBoardingReminders(deps: BoardingDeps) {
       const first = legs[0];
       const sched = first ? Date.parse(first.departure.scheduled ?? "") : NaN;
       if (first && Number.isFinite(sched) && p.details?.checkedBags !== 0 && open) {
-        const key = `${p.id}|${first.flightId}|checkin`;
+        const key = `${p.id}|${first.flightId}|${first.departure.scheduled}|checkin`;
         const lead = international(first) ? CHECKIN_LEAD_MIN.international : CHECKIN_LEAD_MIN.domestic;
         if (!told.has(key) && now >= sched - lead * 60_000 && now < sched - 45 * 60_000) {
           await send(key, p, { kind: "text", text: checkinText(p.lang, p.details?.checkedBags) }, "checkin_reminder", {});
@@ -228,14 +228,16 @@ export function createBoardingReminders(deps: BoardingDeps) {
       for (let i = 0; i < legs.length; i++) {
         const s = legs[i];
         if (!s || s.cancelled || s.departure.actual) continue;
-        const key = `${p.id}|${s.flightId}`;
+        const key = `${p.id}|${s.flightId}|${s.departure.scheduled}`;
         if (told.has(key)) continue;
         const dep = Date.parse(s.departure.estimated ?? s.departure.scheduled ?? "");
         const stored = p.boardingPasses?.[norm(s.ident)];
         // A pass for the same flight number on another day says nothing about this one.
         const depDay = s.departure.scheduled && s.origin.timezone ? new Intl.DateTimeFormat("en-CA", { timeZone: s.origin.timezone }).format(new Date(s.departure.scheduled)) : null;
         const pass = stored && (!stored.date || !depDay || stored.date === depDay) ? stored : undefined;
-        const printed = pass?.boardingTime ? passInstant(pass.boardingTime, s, dep) : NaN;
+        // A misread time ("13:25" for "18:25") must not send anyone to the gate: only within 90 min before departure.
+        const read = pass?.boardingTime ? passInstant(pass.boardingTime, s, Date.parse(s.departure.scheduled ?? "") || dep) : NaN;
+        const printed = read <= dep && read >= dep - 90 * 60_000 ? read : NaN;
         // The pass's own boarding time beats any rule: remind a quarter of an hour before it.
         const at = Number.isFinite(printed) ? printed - 15 * 60_000 : remindAt(s);
         if (at === null || now < at || now >= dep) continue;
@@ -257,7 +259,7 @@ export function createBoardingReminders(deps: BoardingDeps) {
       for (const stop of open && trip ? immigrationStops(trip) : []) {
         const s = deps.feed.findByIdent(stop.flight);
         if (!s || s.cancelled || s.destination.iata !== stop.airport) continue;
-        const key = `${p.id}|${s.flightId}|immigration`;
+        const key = `${p.id}|${s.flightId}|${s.departure.scheduled}|immigration`;
         if (told.has(key)) continue;
         const at = remindAt(s);
         const lands = Date.parse(s.arrival.actual ?? s.arrival.estimated ?? s.arrival.scheduled ?? "");

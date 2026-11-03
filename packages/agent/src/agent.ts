@@ -1,6 +1,6 @@
 import type { InboundMessage, OutboundMessage } from "@escala/channel";
 import type { ConversationDeps, ExtractedTrip, Lang, Person } from "@escala/conversation";
-import { arrivalMinutesLate, inboundChain, inboundInference, ruleFor, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
+import { arrivalMinutesLate, inboundChain, inboundInference, isLeg, ruleFor, TYPICAL_BOARDING, type FlightFeed, type FlightSnapshot } from "@escala/feeds";
 import { outputText, type MetaClient, type OpenModelClient } from "@escala/meta-client";
 import { ConsentError, tripRetention, type MemoryStore } from "@escala/memory";
 import { assess, type RightEntry, type TripFacts } from "@escala/rights";
@@ -13,7 +13,7 @@ import { RENTAL_CARS } from "./rentals.ts";
 import { assistanceFor } from "./assistance.ts";
 import { immigrationCard, immigrationStops, PURPOSES, voiceLabel, type Purpose } from "./immigration.ts";
 import { createChecking, describeLocation, legInstant, localClock, locationIsFresh, usableCheckingLine, whereNow } from "./whereabouts.ts";
-import { acceptCandidates, proposeFacts } from "./learner.ts";
+import { acceptCandidates, proposeFacts, SENSITIVE } from "./learner.ts";
 import { extractTrip, scopeGuard, whoSpeaks, type MediaLoader, type ScopePart } from "./models.ts";
 import { AIRPORTS, cityName, factsFor, journeys, norm, type Airlines, type Trip } from "./trip.ts";
 import { extractClaims, numbersIn, verify, type Allowed, type Verdict } from "./verify.ts";
@@ -158,7 +158,7 @@ function isOnlyMemoryRequest(text: string): boolean {
 }
 const ALSO = /\b(and also|also|then|plus|y también|también|además|luego|et aussi|aussi|puis|ensuite)\b/i;
 const ABOUT_RULES =
-  /\b(rules?|instructions?|prompt|system|guard|policy|policies|reglas?|instrucci\w*|sistema|pol[ií]ticas?|r[eè]gles?|consignes?|syst[eè]me)\b/i;
+  /\b(rules?|instructions?|prompt|system|guard|policy|policies|ignore|previous|reglas?|instrucci\w*|sistema|pol[ií]ticas?|ignora\w*|anterior\w*|r[eè]gles?|consignes?|syst[eè]me|ignore[rz]?|pr[ée]c[ée]dent\w*)\b/i;
 
 const TOOLS = [
   {
@@ -465,6 +465,8 @@ export function createEscalaAgent(
   // Messages a tool sends as they are (the claim letter), after the answer, so the traveler can copy them whole.
   // Kept per person: two travelers' turns run at the same time.
   const outboxes = new Map<string, Array<OutboundMessage | Promise<OutboundMessage | null>>>();
+  /** The claim letter of this turn, sent after the answer only when the answer itself was verified. */
+  const letters = new Map<string, string>();
   const currentText = new Map<string, string>(); // person -> the message being answered
   const answered = new Map<string, () => void>(); // person -> called when this turn's answer is handed over
   const askedAt = new Map<string, number>();
@@ -483,7 +485,7 @@ export function createEscalaAgent(
   const flightFor = (trip: Trip | undefined, ident: string) => {
     const s = deps.feed.findByIdent(ident);
     const leg = trip?.legs.find((l) => norm(l.flight) === norm(ident));
-    return s && (!leg || (s.origin.iata === leg.from && s.destination.iata === leg.to)) ? s : undefined;
+    return s && (!leg || isLeg(s, leg)) ? s : undefined;
   };
   const liveTimesFor = (trip: Trip | undefined) => (flight: string) => {
     const s = flightFor(trip, flight);
@@ -548,7 +550,7 @@ export function createEscalaAgent(
     if (!bp.flight) return PASS_UNREADABLE[p.lang];
     const flight = norm(bp.flight);
     p.boardingPasses = { ...(p.boardingPasses ?? {}), [flight]: { ...(bp.boardingTime ? { boardingTime: bp.boardingTime } : {}), ...(bp.gate ? { gate: bp.gate } : {}), ...(bp.seat ? { seat: bp.seat } : {}), ...(bp.group ? { group: bp.group } : {}), ...(bp.date ? { date: bp.date } : {}) } };
-    if (!p.name && bp.givenName) p.name = bp.givenName[0]!.toUpperCase() + bp.givenName.slice(1).toLowerCase();
+    // The name printed on the pass is not taken: Escala uses a person's name as little as it can (audit 1-nov).
     const inTrip = trip.legs.some((l) => norm(l.flight) === flight);
     const snap = flightFor(trip, flight);
     const L = p.lang;
@@ -651,6 +653,7 @@ export function createEscalaAgent(
     const question = inScope.map((x) => x.text).join(" ");
     askedAt.set(p.id, at);
     outboxes.delete(p.id);
+    letters.delete(p.id);
     currentText.set(p.id, m.text);
     let draft = await answer(question, p, trip, allowed, recentTurns(p, at));
     if (!draft.trim()) {
@@ -663,6 +666,21 @@ export function createEscalaAgent(
     // Voice notes were being recorded while the model wrote the answer; one that failed is left out.
     const extra = (await Promise.all(outboxes.get(p.id) ?? [])).filter((x): x is OutboundMessage => x !== null);
     outboxes.delete(p.id);
+    currentText.delete(p.id); // the message is not kept past its turn (audit 1-nov)
+    // STOP while the answer was being written: nothing more goes out (audit 1-nov).
+    if (p.stage === "stopped") {
+      letters.delete(p.id);
+      return [];
+    }
+    const letter = letters.get(p.id);
+    letters.delete(p.id);
+    if (letter && draft !== FALLBACK[p.lang] && draft !== SAY_AGAIN[p.lang]) {
+      // The letter goes once, as its own message: if the model also wrote it into its answer, that copy is cut.
+      const subject = letter.split("\n")[0]!.slice(0, 40);
+      const copy = subject ? draft.indexOf(subject) : -1;
+      if (copy > 0) draft = draft.slice(0, copy).replace(/[\s-]+$/, "");
+      extra.push({ kind: "text", text: letter });
+    }
     replies.push({ kind: "text", text: draft }, ...extra);
     answered.get(p.id)?.();
     answered.delete(p.id);
@@ -725,6 +743,7 @@ export function createEscalaAgent(
       "If rights_for_trip returns nothing for this country or this kind of problem, say your rules don't cover it yet; never conclude that no rights exist or that the airline owes nothing. " +
       "Ask at most one question, and only the one rights_for_trip returned or one needed to answer; don't end with offers phrased as questions. " +
       "Escala is for adults. If the traveler says they are under 18, say kindly that Escala is made for adults, suggest that a parent or guardian write instead, and that the airline's unaccompanied minor service is who looks after a minor flying alone; do not take their trip. " +
+      "A rule whose instrument says the airline is fictitious and its plan synthetic is the demo airline's example plan: say so in those words, never that it was confirmed on a government site. " +
       "You give information with sources, not legal advice; never promise compensation. Never book anything, and offer only what you can do: you cannot see other flights or seats. " +
       "Entry and transit documents: when the traveler tells which passport they fly with, call set_passport (dual nationals: the one they fly with), then documents_for_trip, and say for each country on the route (leaving, the connection, arriving) what it asks and which forms to fill, naming the official site (\"canada.ca, Oct 28\"); write a full link only where they must go to fill something (like the FEM). Keep it short. " +
       "Bag claims: when they want to claim for a delayed, lost or damaged bag, call rights_for_trip and then draft_claim; never write the letter yourself. Say first, in a few lines, where to send it (the airline's baggage claim form or customer relations, keeping proof of sending), the deadline it returns and the blanks still to fill; Escala never takes a cut and this is not legal advice. " +
@@ -733,7 +752,7 @@ export function createEscalaAgent(
       "Never give immigration cards unless they ask about immigration or what an officer will ask: the card reaches them on its own before the flight. " +
       "Immigration: when they ask what the officer will ask, how to prepare, or what to answer, call immigration_card and give its cards as written; never script anything the card does not hold (no invented ties, money or reasons), and don't describe what happens at the booth (stamps, questions, steps): you have no source for it. " +
       "Never state a visa, authorization or entry requirement that documents_for_trip did not return; for a country it does not cover, say you don't have it verified yet and give its official page; if a rule is NO_VERIFICADO, say so. " +
-      "You cannot message other people yet: if asked to tell someone something, say so kindly and give a short ready-to-forward message in the traveler's language with only what they told you or the trip shows. " +
+      "You cannot message other people yet: if asked to tell someone something, say so kindly and give a short ready-to-forward message in the traveler's language with only what they told you or the trip shows; in it write the day as a date (Monday, November 2), never today or tomorrow, since it will be read later. " +
       "For getting around, places, food, stays, events, tours, airport layout or safety, call search_travel_info and offer what it found as a suggestion, " +
       "naming the source and the day it was checked, with at most two of its links at the end. Next to each place or route, put its maps_link so they can follow it with their GPS. If it says 'unconfirmed', or sources disagree, say plainly that you could not confirm it. " +
       "Never present something from the web as certain. Use convert for currencies and measures; currency results are reference rates of the date it gives, not what a bank charges. " +
@@ -1113,6 +1132,11 @@ export function createEscalaAgent(
     }
     if (name === "remember") {
       if (!deps.memory) return { error: "memory is not available" };
+      // What stays for future trips passes the learner's filter (health, religion, politics, money, documents); a trip
+      // fact (a wheelchair for this trip, what they spent) expires with the trip (audit 1-nov).
+      if (args.scope === "profile" && (SENSITIVE.test(String(args.statement)) || SENSITIVE.test(String(args.quote)))) {
+        return { not_remembered: "this is sensitive (health, beliefs, money or documents) and is not kept for future trips; it can still help on this trip" };
+      }
       try {
         const f = deps.memory.remember(p.id, {
           scope: args.scope === "profile" ? "profile" : "trip",
@@ -1184,9 +1208,11 @@ export function createEscalaAgent(
       const kept = deps.memory ? (["bag", "bag_tag"] as const).flatMap((o) => deps.memory!.recall(p.id, { topic: `evidence.${o}` }).slice(0, 1).map((f) => ({ what: o, at: f.source.at, tagNumber: (f.data?.tagNumber as string | undefined) }))) : [];
       // Only amounts the traveler wrote in this turn or a recent one: the model's word is not provenance.
       const theirs = [currentText.get(p.id) ?? "", ...(p.recent ?? []).filter((t) => t.role === "traveler").map((t) => t.text)]
-        .flatMap((t) => extractClaims(t)).filter((c) => c.kind === "amount").map((c) => c.value);
+        .flatMap((t) => extractClaims(t)).filter((c) => c.kind === "amount");
+      // Same value and, when they wrote one, the same currency: "600 euros" does not become 600 pesos of hotel (audit 31-oct).
+      const stated = (e: any) => theirs.some((c) => c.value === e.amount && (!c.currency || c.currency.toUpperCase() === String(e.currency).toUpperCase().slice(0, 3)));
       const expenses = (Array.isArray(args.expenses) ? args.expenses : [])
-        .filter((e: any) => typeof e?.amount === "number" && typeof e?.currency === "string" && typeof e?.what === "string" && theirs.includes(e.amount))
+        .filter((e: any) => typeof e?.amount === "number" && typeof e?.currency === "string" && typeof e?.what === "string" && stated(e))
         .map((e: any) => ({ what: scrub(e.what), amount: e.amount, currency: e.currency.toUpperCase().slice(0, 3) }));
       const lang = (["en", "es", "fr"] as const).includes(args.letter_lang) ? (args.letter_lang as Lang) : "en";
       const today = localDay(currentMessage.at || new Date().toISOString(), p, trip);
@@ -1203,7 +1229,8 @@ export function createEscalaAgent(
           if_the_airline_does_not_answer: escalation,
         };
       }
-      outboxes.set(p.id, [...(outboxes.get(p.id) ?? []), { kind: "text", text: claim.letter }]);
+      // One letter per turn: a second draft_claim in the same answer replaces the first (audit 1-nov).
+      letters.set(p.id, claim.letter);
       return {
         letter: "it goes right after your text as a separate message: call it 'the letter below'",
         letter_language: lang,
@@ -1295,6 +1322,7 @@ export function createEscalaAgent(
       turns.delete(personId);
       currentText.delete(personId);
       outboxes.delete(personId);
+      letters.delete(personId);
       answered.delete(personId);
     },
     /** Drops per-person state after a day of silence. Run on a schedule. */

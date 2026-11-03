@@ -1,6 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { assess, loadEntries } from "@escala/rights";
 import { dayLabel, factsFor, journeys, legLine, type Trip } from "../src/index.ts";
+import { validLeg } from "../src/models.ts";
+
+describe("audit (Nov 1): extracted legs are checked in code", () => {
+  const ok = { flight: "ZZ 1234", date: "2026-11-02", from: "MEX", to: "ORD", dep_local: "00:05", arr_local: "04:20" };
+  it("keeps a well-formed leg", () => expect(validLeg(ok)).toBe(true));
+  it("drops impossible times, dates, codes and flight numbers", () => {
+    expect(validLeg({ ...ok, dep_local: "25:99" })).toBe(false);
+    expect(validLeg({ ...ok, date: "2026-02-30" })).toBe(false);
+    expect(validLeg({ ...ok, from: "XX" })).toBe(false);
+    expect(validLeg({ ...ok, to: "MEX" })).toBe(false);
+    expect(validLeg({ ...ok, flight: "fly me" })).toBe(false);
+    expect(validLeg({ ...ok, arr_local: "" })).toBe(true);
+  });
+});
 
 const demo: Trip = {
   bookingRef: "QX7P2L",

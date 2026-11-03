@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SimChannel, validateOutbound, type OutboundMessage } from "@escala/channel";
-import { Conversation, detectLang, keywordIntent, LANGS, T, type ExtractedTrip, type Person } from "../src/index.ts";
+import { Conversation, detectLang, keywordIntent, LANGS, saysMinor, T, type ExtractedTrip, type Person } from "../src/index.ts";
 
 const trip: ExtractedTrip = {
   lines: ["ZZ 1234 · lun 2 nov · Austin 07:10 → Chicago 09:35", "ZZ 567 · lun 2 nov · Chicago 10:30 → Montreal 13:40"],
@@ -258,6 +258,34 @@ describe("Muse Code audit (Oct 26): privacy promises are kept", () => {
     await sim.userSends("31", { kind: "text", text: "ya no quiero que guardes nada de mí, bórralo todo" });
     expect(conv.people.has("31")).toBe(false);
     expect((sim.transcript.at(-1)!.message as { text: string }).text).toMatch(/Borré todo/);
+  });
+
+  it("audit (Oct 31): a short 'delete the note' asks first instead of erasing everything", async () => {
+    const sim = new SimChannel();
+    const erased: string[] = [];
+    const conv = new Conversation({ channel: sim, extractItinerary: async () => null, agent: async () => [], onDelete: async (id) => void erased.push(id) });
+    await sim.userSends("32", { kind: "text", text: "Hi" });
+    await sim.userSends("32", { kind: "text", text: "delete the note" });
+    expect(erased).toEqual([]);
+    expect(conv.people.get("32")!.awaiting).toBe("delete_confirm");
+    await sim.userSends("32", { kind: "text", text: "DELETE" });
+    expect(erased).toEqual(["32"]);
+  });
+
+  it("battery (Oct 31): someone who says they are 15 gets no trip taken, typed or demo", async () => {
+    expect(saysMinor("I'm 15 and flying alone")).toBe(true);
+    expect(saysMinor("tengo 16 años")).toBe(true);
+    expect(saysMinor("j'ai 14 ans")).toBe(true);
+    expect(saysMinor("I'm 5 minutes from the gate")).toBe(false);
+    expect(saysMinor("tengo 2 maletas")).toBe(false);
+    expect(saysMinor("my son is 15")).toBe(false);
+    const sim = new SimChannel();
+    const conv = new Conversation({ channel: sim, extractItinerary: async () => trip, agent: async () => [] });
+    await sim.userSends("33", { kind: "text", text: "hey" });
+    await sim.userSends("33", { kind: "text", text: "I'm 15 and flying alone to see my dad" });
+    await sim.userSends("33", { kind: "text", text: "My flight is ZZ 77 from ORD to MIA tomorrow" });
+    expect(conv.people.get("33")!.pending).toBeUndefined();
+    expect((sim.transcript.at(-1)!.message as { text: string }).text).toBe(T.en.minor);
   });
 
   it("battery (Oct 26): English with 'me' is not read as Spanish", () => {

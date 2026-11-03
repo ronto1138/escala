@@ -1,6 +1,6 @@
 import type { OutboundMessage, ParticipantId } from "@escala/channel";
 import type { Lang, Person } from "@escala/conversation";
-import type { FlightEvent, FlightSnapshot } from "@escala/feeds";
+import { isLeg, type FlightEvent, type FlightSnapshot, type LegRef } from "@escala/feeds";
 
 /**
  * Tells travelers when one of their flights changes. Inside the 24-hour window it writes freely; outside it, it uses
@@ -145,15 +145,13 @@ export function createNotifier(deps: NotifierDeps) {
     for (const p of deps.people()) {
       if (p.stage !== "ready") continue; // no trip yet, or STOP
       // Same flight number and the same route: another trip's ZZ 1234 from another city is not this one.
-      const legs = ((p.trip as { legs?: Array<{ flight: string; date: string; from?: string; to?: string }> } | undefined)?.legs ?? []).filter(
-        (l) => norm(l.flight) === ident && (!l.from || !snap.origin.iata || l.from === snap.origin.iata) && (!l.to || !snap.destination.iata || l.to === snap.destination.iata),
-      );
+      const legs = ((p.trip as { legs?: Array<LegRef & { date: string }> } | undefined)?.legs ?? []).filter((l) => isLeg(snap, l));
       // Same flight number within a day of the scheduled departure (local and UTC dates can differ by one).
       if (!legs.some((l) => Math.abs(Date.parse(l.date) - Date.parse(day)) <= 86_400_000)) continue;
       for (const e of events) {
         const change = changeText(e, p.lang);
         if (!change) continue;
-        const key = `${p.id}|${e.flightId}|${e.kind}|${change}`;
+        const key = `${p.id}|${e.flightId}|${snap.departure.scheduled}|${e.kind}|${change}`; // a new run of the demo is a new flight
         if (told.has(key)) continue;
         told.add(key);
         if (told.size > 50_000) told.delete(told.values().next().value!);

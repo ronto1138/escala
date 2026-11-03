@@ -98,6 +98,7 @@ type Texts = {
   notWatching: string;
   fixPrompt: string;
   notReadable: string;
+  minor: string;
   /** What Escala understood from a voice note, so a misheard word can be corrected at once. */
   heard: (text: string) => string;
   /** A voice note of someone else speaking to the traveler, in another language. */
@@ -130,6 +131,7 @@ export const T: Record<Lang, Texts> = {
     demoButton: "Try a demo trip",
     notWatching: "Saved. One thing: in this test, flight data is simulated, so I can't follow real flights. I can still help with anything about your trip. To see live flight alerts, try the demo trip.",
     fixPrompt: "No problem. What should I fix?",
+    minor: "Escala is made for adults, so I can't take this trip. A parent or guardian can write to me instead, and the airline's unaccompanied minor service is who looks after someone under 18 flying alone.",
     notReadable: "I couldn't find a trip there. Could you send me the confirmation email, a screenshot, or the flight numbers and dates?",
     heard: (t) => `🎙️ I heard: "${t}"`,
     heardOther: (t) => `🎙️ Someone told you: "${t}"`,
@@ -187,6 +189,7 @@ export const T: Record<Lang, Texts> = {
     demoButton: "Probar viaje demo",
     notWatching: "Listo, lo guardé. Un detalle: en esta prueba los datos de vuelo son simulados, así que no puedo seguir vuelos reales. Igual te ayudo con todo lo de tu viaje. Para ver avisos de vuelo en vivo, prueba el viaje demo.",
     fixPrompt: "Claro. ¿Qué corrijo?",
+    minor: "Escala está hecho para adultos, así que no puedo tomar este viaje. Tu mamá, tu papá o quien te cuide me puede escribir, y quien cuida a un menor de 18 que vuela solo es el servicio de menores no acompañados de la aerolínea.",
     notReadable: "No encontré un viaje ahí. ¿Me mandas el correo de confirmación, una captura o los números de vuelo y las fechas?",
     heard: (t) => `🎙️ Entendí: «${t}»`,
     heardOther: (t) => `🎙️ Te dijeron: «${t}»`,
@@ -244,6 +247,7 @@ export const T: Record<Lang, Texts> = {
     demoButton: "Voyage de démo",
     notWatching: "C'est noté. Une précision : dans ce test, les données de vol sont simulées, je ne peux donc pas suivre de vrais vols. Je peux quand même vous aider pour tout votre voyage. Pour voir des alertes de vol en direct, essayez le voyage de démo.",
     fixPrompt: "Bien sûr. Qu'est-ce que je corrige ?",
+    minor: "Escala est conçu pour les adultes, je ne peux donc pas prendre ce voyage. Un parent ou un tuteur peut m'écrire, et c'est le service des mineurs non accompagnés de la compagnie qui s'occupe d'un moins de 18 ans voyageant seul.",
     notReadable: "Je n'ai pas trouvé de voyage. Pouvez-vous m'envoyer le courriel de confirmation, une capture ou les numéros de vol et les dates ?",
     heard: (t) => `🎙️ J'ai compris : « ${t} »`,
     heardOther: (t) => `🎙️ On vous a dit : « ${t} »`,
