@@ -160,9 +160,9 @@ const CONFIRM_STOP: Record<Lang, string> = {
 };
 
 const CONFIRM_DELETE: Record<Lang, string> = {
-  en: "Do you want me to delete everything I keep about you? This can't be undone. Reply DELETE to confirm.",
-  es: "¿Quieres que borre todo lo que guardo de ti? No se puede deshacer. Responde BORRAR para confirmar.",
-  fr: "Voulez-vous que j'efface tout ce que je garde sur vous ? C'est irréversible. Répondez EFFACER pour confirmer.",
+  en: "Do you want me to delete everything I keep about you? This can't be undone. Reply DELETE to confirm. If you meant just one thing, tell me which and I'll forget only that.",
+  es: "¿Quieres que borre todo lo que guardo de ti? No se puede deshacer. Responde BORRAR para confirmar. Si era una sola cosa, dime cuál y olvido solo eso.",
+  fr: "Voulez-vous que j'efface tout ce que je garde sur vous ? C'est irréversible. Répondez EFFACER pour confirmer. Si c'était une seule chose, dites-moi laquelle et j'oublie seulement celle-là.",
 };
 
 /**
@@ -289,7 +289,7 @@ export class Conversation {
 
     // The demo trip, by its button or by asking for it in so many words: shown like any itinerary, to confirm.
     const tokensDemo = new Set(fold(word).split(/[^\p{L}'-]+/u).filter(Boolean));
-    const askedDemo = DEMO_WORDS.includes(word) || (words(text).length <= 5 && (tokensDemo.has("demo") || tokensDemo.has("demostracion")));
+    const askedDemo = DEMO_WORDS.includes(word) || (words(text).length <= 8 && (tokensDemo.has("demo") || tokensDemo.has("demostracion")));
     if (this.deps.demoTrip && (demoTap || askedDemo) && p.minor) return this.say(p, T[p.lang].minor);
     if (this.deps.demoTrip && (demoTap || askedDemo)) {
       const demo = this.deps.demoTrip(p);
@@ -364,6 +364,12 @@ export class Conversation {
     if (p.awaiting === "fix" && (await this.readItinerary(m, p, text))) return;
 
     if (!p.trip && this.mayHoldTrip(m) && (await this.readItinerary(m, p))) return;
+
+    // Escala is for adults: once someone said they are a minor, every turn gets the same answer, also "now my mom
+    // writes" from the same number (battery 2-nov); a parent writes from their own WhatsApp.
+    if (p.minor && !p.trip) return this.say(p, T[p.lang].minor);
+    // A photo or file with no trip in it, before there is a trip: it can't be evidence yet (battery 2-nov).
+    if (!p.trip && m.kind !== "text" && m.kind !== "location") return this.say(p, T[p.lang].notReadable);
 
     if (this.deps.agent) {
       for (const out of await this.deps.agent(m, p)) {

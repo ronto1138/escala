@@ -294,6 +294,32 @@ describe("Muse Code audit (Oct 26): privacy promises are kept", () => {
     expect((sim.transcript.at(-1)!.message as { text: string }).text).toBe(T.en.minor);
   });
 
+  it("battery (Nov 2): a minor's number keeps the same answer when 'mom' writes, and the demo asked in a sentence", async () => {
+    const sim = new SimChannel();
+    const agentSaw: string[] = [];
+    const conv = new Conversation({
+      channel: sim,
+      extractItinerary: async () => null,
+      demoTrip: () => trip,
+      agent: async (m) => (agentSaw.push(m.kind === "text" ? m.text : m.kind), [{ kind: "text", text: "ok" }]),
+    });
+    const last = () => (sim.transcript.at(-1)!.message as { text: string }).text;
+    await sim.userSends("34", { kind: "text", text: "hola" });
+    await sim.userSends("34", { kind: "text", text: "tengo 16 años y voy a ver a mi abuela" });
+    await sim.userSends("34", { kind: "text", text: "ahora te escribe mi mamá, ¿me ayudas con el viaje de mi hija?" });
+    expect(last()).toBe(T.es.minor);
+    expect(last()).toMatch(/propio WhatsApp/);
+    expect(agentSaw).toEqual([]);
+
+    await sim.userSends("35", { kind: "text", text: "hola" });
+    await sim.userSends("35", { kind: "text", text: "solo este viaje" });
+    await sim.userSends("35", { kind: "image", mediaId: "maleta", mimeType: "image/jpeg" });
+    expect(last()).toBe(T.es.notReadable);
+    await sim.userSends("35", { kind: "text", text: "quiero ver el demo otra vez" });
+    expect(conv.people.get("35")!.pending).toBe(trip);
+    expect(agentSaw).toEqual([]);
+  });
+
   it("battery (Oct 26): English with 'me' is not read as Spanish", () => {
     expect(detectLang("ZX denied me boarding in Calgary. What do they owe me and when?")).toBe("en");
     expect(detectLang("Can you help me with my trip?")).toBe("en");

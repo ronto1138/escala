@@ -485,7 +485,8 @@ export function createEscalaAgent(
   const flightFor = (trip: Trip | undefined, ident: string) => {
     const s = deps.feed.findByIdent(ident);
     const leg = trip?.legs.find((l) => norm(l.flight) === norm(ident));
-    return s && (!leg || isLeg(s, leg)) ? s : undefined;
+    // Only a flight of the person's own trip: the demo's simulated flights are not anyone's who typed their number (battery 2-nov).
+    return s && leg && isLeg(s, leg) ? s : undefined;
   };
   const liveTimesFor = (trip: Trip | undefined) => (flight: string) => {
     const s = flightFor(trip, flight);
@@ -742,7 +743,7 @@ export function createEscalaAgent(
       "If a rule is under 'below_threshold', mention it briefly with its threshold and source and say this trip does not reach it (\"the US refund rule needs 6 hours on an international trip; you're at 3.5\"). " +
       "If rights_for_trip returns nothing for this country or this kind of problem, say your rules don't cover it yet; never conclude that no rights exist or that the airline owes nothing. " +
       "Ask at most one question, and only the one rights_for_trip returned or one needed to answer; don't end with offers phrased as questions. " +
-      "Escala is for adults. If the traveler says they are under 18, say kindly that Escala is made for adults, suggest that a parent or guardian write instead, and that the airline's unaccompanied minor service is who looks after a minor flying alone; do not take their trip. " +
+      "Escala is for adults. If the traveler says they are under 18, say kindly that Escala is made for adults, suggest that a parent or guardian write from their own WhatsApp, and that the airline's unaccompanied minor service is who looks after a minor flying alone; do not take their trip. " +
       "A rule whose instrument says the airline is fictitious and its plan synthetic is the demo airline's example plan: say so in those words, never that it was confirmed on a government site. " +
       "You give information with sources, not legal advice; never promise compensation. Never book anything, and offer only what you can do: you cannot see other flights or seats. " +
       "Entry and transit documents: when the traveler tells which passport they fly with, call set_passport (dual nationals: the one they fly with), then documents_for_trip, and say for each country on the route (leaving, the connection, arriving) what it asks and which forms to fill, naming the official site (\"canada.ca, Oct 28\"); write a full link only where they must go to fill something (like the FEM). Keep it short. " +
