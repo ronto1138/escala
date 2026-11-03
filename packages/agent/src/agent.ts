@@ -794,7 +794,8 @@ export function createEscalaAgent(
       }
       if (calls.some((c: any) => c.name === "documents_for_trip")) toldDocuments = true;
       // A web search takes 10–16 s: only then, and once per message, the traveler hears that Escala is looking.
-      if (!toldChecking && deps.progress && calls.some((c: any) => c.name === "search_travel_info")) {
+      // Not after a STOP sent while the answer was being made (Muse Code nightly audit, 3-nov).
+      if (!toldChecking && deps.progress && p.stage !== "stopped" && calls.some((c: any) => c.name === "search_travel_info")) {
         toldChecking = true;
         const own = (r.output ?? []).filter((o: any) => o.type === "message").flatMap((o: any) => o.content ?? []).map((c: any) => c.text ?? "").join(" ").trim();
         await deps.progress(p.id, usableCheckingLine(own) ? own : checking(p.id, p.lang)).catch(() => undefined);
@@ -1013,7 +1014,7 @@ export function createEscalaAgent(
         d.addressLookedUp = stay; // once per place: asking again does not search again
         p.details = d;
         const city = cityName(trip.legs.at(-1)!.to, "en");
-        if (deps.progress) await deps.progress(p.id, checking(p.id, p.lang)).catch(() => undefined);
+        if (deps.progress && p.stage !== "stopped") await deps.progress(p.id, checking(p.id, p.lang)).catch(() => undefined);
         const found = await searchTravel(deps.client, {
           query: `street address of ${JSON.stringify(stay)} in ${city}`,
           place: city,
