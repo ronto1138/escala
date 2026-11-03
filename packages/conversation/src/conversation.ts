@@ -383,6 +383,9 @@ export class Conversation {
     if (stopAsked && route.kind !== "stop" && route.kind !== "confirm") p.awaiting = null; // not a yes: they moved on
     switch (route.kind) {
       case "stop":
+        // A model's reading of "stop" needs some word of stopping in the message: with Meta down, the fallback read
+        // "escribe el reclamo" as stop (battery 2-nov). Without one, it goes on to the agent.
+        if (!stopAsked && !STOPPING.test(text)) return false;
         // The word itself (STOP, ALTO…) stops at once before reaching here; a model's reading is confirmed first.
         if (!stopAsked) {
           p.awaiting = "stop_confirm";
@@ -501,7 +504,7 @@ export class Conversation {
     if (!got || got.lines.length === 0) return false;
     // The same flights they already have ("change of plans: no train, one more day in New York") is not a new trip:
     // the agent records the change (battery 31-oct).
-    if (!correction && p.trip && sameLegs(got.trip, p.trip)) return false;
+    if (p.trip && !p.pending && sameLegs(got.trip, p.trip)) return false;
     p.pending = got;
     p.awaiting = "confirm";
     await this.say(p, T[p.lang].itinerarySummary(got.lines));
@@ -604,6 +607,10 @@ function normalize(s: string) {
 function words(s: string) {
   return normalize(s).split(" ").filter(Boolean);
 }
+
+/** Words of stopping or leaving, in the three languages; a model's "stop" without one of them is not taken. */
+const STOPPING =
+  /\b(stop|quit|cancel|unsubscribe|leave me|no more|don'?t (?:text|message|write)|do not (?:text|message|write)|para|parar|pares|deja|dejar|dejes|alto|basta|baja|ya no|no me (?:escribas|mandes|env[ií]es)|cancela\w*|arr[eê]t\w*|plus de|ne m'?(?:[ée]cri|envo)\w*|laisse[zr]?|d[ée]sabonn\w*)\b/i;
 
 /** Someone saying they are under 18 about themselves ("I'm 15", "tengo 15 años", "j'ai 15 ans"); a parent writing about a child is not. */
 export function saysMinor(text: string): boolean {
