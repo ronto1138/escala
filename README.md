@@ -10,14 +10,30 @@ Built for the **Meta Global AI Developer Hackathon** (Oct 26 – Nov 4, 2026), t
 with Meta's models through the Meta Model API. **Built with Muse Spark Open**: Meta's open-weight model, served by
 Baseten, is the memory that learns how each traveler likes to travel. Escala is for adults (18+).
 
-> Status: **Day 2 (Oct 27).** Escala is live on WhatsApp, running on Railway. It reads an itinerary from text or a
-> screenshot, watches flights (with the inbound-aircraft inference), decides passenger rights by rules across the US,
-> Canada, Mexico, the EU, the UK and the Montreal Convention, checks every figure before it is sent, understands voice
-> notes in three languages, records the condition of a bag or a rental car from a photo, and guides the trip:
+> **Status at submission (Nov 3, 2026).** Escala is live on WhatsApp, running on Railway. It reads an itinerary from
+> text or a screenshot, watches flights (with the inbound-aircraft inference), decides passenger rights by rules across
+> the US, Canada, Mexico, the EU, the UK and the Montreal Convention, checks every figure before it is sent, understands
+> voice notes in three languages, records the condition of a bag or a rental car from a photo, and guides the trip:
 > getting from the airport, transit or taxi, places, events and safety, found with Muse Spark's web search and
 > always with the source and the date checked. What no source confirms, it says it could not confirm. It also
 > converts currencies (European Central Bank reference rates, dated) and measures.
 > Privacy policy: https://escala-production-e918.up.railway.app/privacy.
+
+**Try it.** Judges get a WhatsApp invitation (QR code) with the submission; this repository does not publish the
+number. Send the code, then tap **Try a demo trip**: a fictitious trip from Mexico City to Montreal through Chicago
+plays out in a few minutes, with a delay, a gate change, the boarding reminder and the immigration card. Ask anything
+about it along the way, in English, Spanish or French. Demo video: see the submission.
+
+**How it was tested.** 238 automated tests (`npm run check`, no keys needed). Thirty end-to-end scenarios run with
+the real models in the simulator, in the three languages: prompt injection by text, voice and location; invented
+figures; a minor; STOP mid-answer; impossible dates; unsupported languages; and two volume runs: 13 people on the demo
+at once (every person received only their own alerts, in their language; 90% of answers in about 17 s or less), and 8 at once
+with the Meta Model API forced down, answered by Muse Spark Open (90% in about 11 s or less). The volume runs exercise Escala and
+the models, not WhatsApp's or Railway's limits.
+
+**Known limits.** The verifier checks amounts, percentages and durations, not gates, times or place names; those come
+from tool data the model is told to copy. Figures found on the web are allowed only with their source and date.
+Someone who joins the demo story after it started misses its first alert. Flight data is simulated (below).
 
 **Simulated flights.** During the hackathon, flight data comes from synthetic scenarios replayed in real time (flight
 numbers ZZ1234 and ZZ567); no live flight data provider is connected. The demo trip runs on a real route, Mexico City to
