@@ -19,10 +19,12 @@ Baseten, is the memory that learns how each traveler likes to travel. Escala is 
 > converts currencies (European Central Bank reference rates, dated) and measures.
 > Privacy policy: https://escala-production-e918.up.railway.app/privacy.
 
-**Try it.** Judges get a WhatsApp invitation (QR code) with the submission; this repository does not publish the
-number. Send the code, then tap **Try a demo trip**: a fictitious trip from Mexico City to Montreal through Chicago
-plays out in a few minutes, with a delay, a gate change, the boarding reminder and the immigration card. Ask anything
-about it along the way, in English, Spanish or French. Demo video: see the submission.
+**Try it (judges).** Escala is in a private test and answers only invited numbers. Open
+[this WhatsApp link](https://wa.me/15551756547?text=Hi%20Escala%21%20JUEZ-RY2VD6) and send the message it fills in, or write `JUEZ-RY2VD6` to **+1 555-175-6547** on
+WhatsApp (valid until Nov 20, 2026). Then tap **Try a demo trip**: a fictitious trip from Mexico City to Montreal
+through Chicago plays out in a few minutes, with a delay, a gate change, the boarding reminder and the immigration card.
+Ask anything about it along the way, in English, Spanish or French. Use made-up details: test conversations are read
+by the team to improve Escala. Demo video: https://youtu.be/ttUuYyhJqfQ
 
 **How it was tested.** 238 automated tests (`npm run check`, no keys needed). Thirty end-to-end scenarios run with
 the real models in the simulator, in the three languages: prompt injection by text, voice and location; invented
